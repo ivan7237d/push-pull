@@ -1,0 +1,18 @@
+{
+  "name": "@asyncs/core",
+  "version": "0.0.0",
+  "description": "Asyncs core",
+  "repository": "https://github.com/ivan7237d/asyncs.git",
+  "license": "MIT",
+  "module": "build/module/index.js",
+  "main": "build/main/index.js",
+  "types": "build/types/index.d.ts",
+  "files": [
+    "build/module",
+    "build/main",
+    "build/types",
+    "!**/*.test.*",
+    "!**/setupTests.*"
+  ],
+  "sideEffects": false
+}

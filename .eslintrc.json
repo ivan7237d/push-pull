@@ -1,0 +1,51 @@
+{
+  "root": true,
+  "plugins": ["eslint-plugin-expect-type", "prefer-arrow", "jest"],
+  "parserOptions": {
+    // Required by eslint-plugin-expect-type.
+    //
+    // typescript-eslint currently [does not support project
+    // references](https://github.com/typescript-eslint/typescript-eslint/issues/2094),
+    // so linting requires building first.
+    "project": "./tsconfig.base.json"
+  },
+  "extends": [
+    "eslint:recommended",
+    "plugin:@typescript-eslint/base",
+    "plugin:@typescript-eslint/eslint-recommended",
+    "prettier",
+    "plugin:eslint-plugin-expect-type/recommended",
+    "plugin:eslint-comments/recommended"
+  ],
+  "rules": {
+    // Rules that prevent unused code.
+    "no-unused-vars": "off",
+    "@typescript-eslint/no-unused-vars": [
+      "error",
+      { "ignoreRestSiblings": true }
+    ],
+    "eslint-comments/no-unused-disable": "error",
+    "no-useless-rename": "error",
+    "object-shorthand": "error",
+    "no-constant-condition": "off",
+    "@typescript-eslint/no-unnecessary-condition": [
+      "error",
+      { "allowConstantLoopConditions": true }
+    ],
+    "@typescript-eslint/await-thenable": "error",
+    "@typescript-eslint/no-unnecessary-type-assertion": "error",
+    "jest/no-disabled-tests": "error",
+    "jest/no-focused-tests": "error",
+    // Consistency rules.
+    "prefer-arrow/prefer-arrow-functions": "error",
+    "arrow-body-style": "error",
+    "no-restricted-syntax": [
+      "error",
+      {
+        "selector": "ExportDefaultDeclaration",
+        "message": "Prefer named exports"
+      }
+    ],
+    "curly": "error"
+  }
+}
