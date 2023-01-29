@@ -1,1 +1,2 @@
-export type { Async } from "./async";
+export { createAsync, isAsync } from "./asyncs";
+export type { Async } from "./asyncs";
