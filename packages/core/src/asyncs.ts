@@ -21,31 +21,99 @@ export const isAsync = (arg: unknown): arg is Async<unknown> =>
 
 const voidSymbol = Symbol("voidSymbol");
 
-const safeCall = (callback: () => void) => {
-  try {
-    callback();
-  } catch (error) {
-    setTimeout(() => {
+class AbortMulticastError extends Error {}
+
+const createAsyncWithoutFlattening = <T>(
+  callback: (
+    set: (arg: T) => void,
+    err: (arg: unknown) => void
+  ) => (() => void) | void
+) => {
+  let unsubscribe: (() => void) | void | undefined | typeof voidSymbol =
+    voidSymbol;
+  let value: T | typeof voidSymbol = voidSymbol;
+  let subscribers = new Set<Subscriber<T>>();
+  let multicasting = false;
+
+  const set = (newValue: T) => {
+    if (subscribers.size === 0) {
+      throw new Error("Called set when not subscribed.");
+    }
+    value = newValue;
+    const syncReentry = multicasting;
+    multicasting = true;
+    for (const [set] of subscribers) {
+      if (set) {
+        try {
+          set(value);
+        } catch (error) {
+          if (error instanceof AbortMulticastError) {
+            return;
+          }
+          setTimeout(() => {
+            throw error;
+          });
+        }
+      }
+    }
+    multicasting = false;
+    if (syncReentry) {
+      throw new AbortMulticastError();
+    }
+  };
+
+  const err = (error: unknown) => {
+    if (subscribers.size === 0) {
+      throw new Error("Called err when not subscribed.");
+    }
+    unsubscribe = voidSymbol;
+    value = voidSymbol;
+    const subscribersSnapshot = subscribers;
+    subscribers = new Set();
+    const syncReentry = multicasting;
+    multicasting = false;
+    for (const [, err] of subscribersSnapshot) {
+      try {
+        if (err) {
+          err(error);
+        } else {
+          throw error;
+        }
+      } catch (error) {
+        setTimeout(() => {
+          throw error;
+        });
+      }
+    }
+    if (syncReentry) {
+      throw new AbortMulticastError();
+    }
+  };
+
+  return (...subscriber: Subscriber<T>) => {
+    subscribers.add(subscriber);
+    try {
+      if (unsubscribe === voidSymbol && subscribers.size === 1) {
+        unsubscribe = callback(set, err);
+      } else if (value !== voidSymbol) {
+        const [set] = subscriber;
+        set?.(value);
+      }
+    } catch (error) {
+      subscribers.delete(subscriber);
       throw error;
-    });
-  }
-};
+    }
 
-const queue: (() => void)[] = [];
-
-let inCallOrEnqueue = false;
-
-const callOrEnqueue = (callback: () => void) => () => {
-  queue.push(callback);
-  if (inCallOrEnqueue) {
-    return;
-  }
-  inCallOrEnqueue = true;
-  let task;
-  while ((task = queue.shift())) {
-    safeCall(task);
-  }
-  inCallOrEnqueue = false;
+    return () => {
+      subscribers.delete(subscriber);
+      if (unsubscribe !== voidSymbol && subscribers.size === 0) {
+        const unsubscribeSnapshot = unsubscribe;
+        unsubscribe = voidSymbol;
+        value = voidSymbol;
+        unsubscribeSnapshot?.();
+      }
+    };
+  };
 };
 
 export const createAsync = <T>(
@@ -54,99 +122,21 @@ export const createAsync = <T>(
     err: (arg: unknown) => void
   ) => (() => void) | void
 ): Async<T> => {
-  let unsubscribe: (() => void) | void | undefined;
-  let unsubscribeInner: (() => void) | undefined;
-  let value: T | typeof voidSymbol = voidSymbol;
-  const subscribers = new Set<Subscriber<T>>();
-
-  const setInternal = (newValue: T) => {
-    value = newValue;
-    for (const [set] of subscribers) {
-      if (set) {
-        safeCall(() => set(newValue));
-      }
-    }
-  };
-
-  const errInternal = (error: unknown) => {
-    unsubscribe = undefined;
-    unsubscribeInner = undefined;
-    value = voidSymbol;
-    for (const [, err] of subscribers) {
-      safeCall(() => {
-        if (err) {
-          err(error);
-        } else {
-          throw error;
-        }
-      });
-    }
-    subscribers.clear();
-  };
-
-  const setExternal = (arg: T | Async<T>) =>
-    callOrEnqueue(() => {
-      if (subscribers.size === 0) {
-        throw new Error("Called set when not subscribed.");
-      }
-      if (unsubscribeInner) {
-        unsubscribeInner();
-        unsubscribeInner = undefined;
+  const subscribe = createAsyncWithoutFlattening<T>((set, err) => {
+    let unsubscribe: (() => void) | undefined;
+    return callback((arg: T | Async<T>) => {
+      if (unsubscribe) {
+        const unsubscribeSnapshot = unsubscribe;
+        unsubscribe = undefined;
+        unsubscribeSnapshot();
       }
       if (isAsync(arg)) {
-        unsubscribeInner = arg(setInternal, (error) => {
-          if (unsubscribe) {
-            safeCall(unsubscribe);
-          }
-          errInternal(error);
-        });
+        unsubscribe = arg(set, err);
       } else {
-        if (arg !== value) {
-          setInternal(arg);
-        }
+        set(arg);
       }
-    });
-
-  const errExternal = (error: unknown) =>
-    callOrEnqueue(() => {
-      if (subscribers.size === 0) {
-        throw new Error("Called err when not subscribed.");
-      }
-      unsubscribeInner?.();
-      errInternal(error);
-    });
-
-  const subscribe = (...subscriber: Subscriber<T>) => {
-    callOrEnqueue(() => {
-      if (value !== voidSymbol) {
-        const [set] = subscriber;
-        if (set) {
-          safeCall(() => set(value as T));
-        }
-      }
-      if (subscribers.size === 0) {
-        safeCall(() => {
-          unsubscribe = callback(setExternal, errExternal);
-        });
-      }
-      subscribers.add(subscriber);
-    });
-    return () =>
-      callOrEnqueue(() => {
-        subscribers.delete(subscriber);
-        if (subscribers.size === 0) {
-          value = voidSymbol;
-          if (unsubscribeInner) {
-            unsubscribeInner();
-            unsubscribeInner = undefined;
-          }
-          if (unsubscribe) {
-            safeCall(unsubscribe);
-            unsubscribe = undefined;
-          }
-        }
-      });
-  };
+    }, err);
+  });
 
   return Object.assign(subscribe, { [asyncSymbol]: true as const });
 };
