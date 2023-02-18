@@ -39,6 +39,9 @@ const createAsyncWithoutFlattening = <T>(
     if (subscribers.size === 0) {
       throw new Error("Called set when not subscribed.");
     }
+    if (newValue === value) {
+      return;
+    }
     value = newValue;
     const syncReentry = multicasting;
     multicasting = true;
@@ -105,7 +108,9 @@ const createAsyncWithoutFlattening = <T>(
     }
 
     return () => {
-      subscribers.delete(subscriber);
+      if (!subscribers.delete(subscriber)) {
+        throw new Error("Already unsubscribed.");
+      }
       if (unsubscribe !== voidSymbol && subscribers.size === 0) {
         const unsubscribeSnapshot = unsubscribe;
         unsubscribe = voidSymbol;
