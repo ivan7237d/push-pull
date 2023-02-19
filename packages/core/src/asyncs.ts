@@ -21,7 +21,13 @@ export const isAsync = (arg: unknown): arg is Async<unknown> =>
 
 const voidSymbol = Symbol("voidSymbol");
 
-class AbortMulticastError extends Error {}
+class AbortSetError extends Error {
+  constructor() {
+    super(
+      "Aborting processing new value because the async variable has a newer value or has erred."
+    );
+  }
+}
 
 const createAsyncWithoutFlattening = <T>(
   callback: (
@@ -50,7 +56,7 @@ const createAsyncWithoutFlattening = <T>(
         try {
           set(value);
         } catch (error) {
-          if (error instanceof AbortMulticastError) {
+          if (error instanceof AbortSetError) {
             return;
           }
           setTimeout(() => {
@@ -61,7 +67,7 @@ const createAsyncWithoutFlattening = <T>(
     }
     multicasting = false;
     if (syncReentry) {
-      throw new AbortMulticastError();
+      throw new AbortSetError();
     }
   };
 
@@ -89,7 +95,7 @@ const createAsyncWithoutFlattening = <T>(
       }
     }
     if (syncReentry) {
-      throw new AbortMulticastError();
+      throw new AbortSetError();
     }
   };
 
