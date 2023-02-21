@@ -1,2 +1,8 @@
-export { createAsync, isAsync } from "./asyncs";
-export type { Async } from "./asyncs";
+export {
+  AbortSetError,
+  createAsync,
+  createAsyncConst,
+  isAsync,
+  isAsyncConst,
+} from "./asyncs";
+export type { Async, AsyncConst } from "./asyncs";

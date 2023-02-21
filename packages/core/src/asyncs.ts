@@ -10,26 +10,11 @@ export interface Async<T> {
 export const isAsync = (arg: unknown): arg is Async<unknown> =>
   typeof arg === "object" && arg !== null && asyncSymbol in arg;
 
-// const asyncConstSymbol = Symbol("asyncConstSymbol");
-
-// export interface AsyncConst<T> extends Async<T> {
-//   [asyncConstSymbol]: true;
-// }
-
-// export const isAsyncConst = (arg: unknown): arg is Async<unknown> =>
-//   typeof arg === "object" && arg !== null && asyncConstSymbol in arg;
-
 const voidSymbol = Symbol("voidSymbol");
 
-class AbortSetError extends Error {
-  constructor() {
-    super(
-      "Aborting processing new value because the async variable has a newer value or has erred."
-    );
-  }
-}
+export class AbortSetError extends Error {}
 
-const createAsyncWithoutFlattening = <T>(
+export const createAsync = <T>(
   callback: (
     set: (arg: T) => void,
     err: (arg: unknown) => void
@@ -39,7 +24,7 @@ const createAsyncWithoutFlattening = <T>(
     voidSymbol;
   let value: T | typeof voidSymbol = voidSymbol;
   let subscribers = new Set<Subscriber<T>>();
-  let multicasting = false;
+  let processingValue = false;
 
   const set = (newValue: T) => {
     if (subscribers.size === 0) {
@@ -49,8 +34,8 @@ const createAsyncWithoutFlattening = <T>(
       return;
     }
     value = newValue;
-    const syncReentry = multicasting;
-    multicasting = true;
+    const syncReentry = processingValue;
+    processingValue = true;
     for (const [set] of subscribers) {
       if (set) {
         try {
@@ -65,9 +50,11 @@ const createAsyncWithoutFlattening = <T>(
         }
       }
     }
-    multicasting = false;
+    processingValue = false;
     if (syncReentry) {
-      throw new AbortSetError();
+      throw new AbortSetError(
+        "Will abort processing a value of an async variable because it has a newer value."
+      );
     }
   };
 
@@ -79,8 +66,8 @@ const createAsyncWithoutFlattening = <T>(
     value = voidSymbol;
     const subscribersSnapshot = subscribers;
     subscribers = new Set();
-    const syncReentry = multicasting;
-    multicasting = false;
+    const syncReentry = processingValue;
+    processingValue = false;
     for (const [, err] of subscribersSnapshot) {
       try {
         if (err) {
@@ -95,11 +82,13 @@ const createAsyncWithoutFlattening = <T>(
       }
     }
     if (syncReentry) {
-      throw new AbortSetError();
+      throw new AbortSetError(
+        "Will abort processing a value of an async variable because it has erred."
+      );
     }
   };
 
-  return (...subscriber: Subscriber<T>) => {
+  const subscribe = (...subscriber: Subscriber<T>) => {
     subscribers.add(subscriber);
     try {
       if (unsubscribe === voidSymbol && subscribers.size === 1) {
@@ -114,10 +103,11 @@ const createAsyncWithoutFlattening = <T>(
     }
 
     return () => {
-      if (!subscribers.delete(subscriber)) {
-        throw new Error("Already unsubscribed.");
-      }
-      if (unsubscribe !== voidSymbol && subscribers.size === 0) {
+      if (
+        subscribers.delete(subscriber) &&
+        unsubscribe !== voidSymbol &&
+        subscribers.size === 0
+      ) {
         const unsubscribeSnapshot = unsubscribe;
         unsubscribe = voidSymbol;
         value = voidSymbol;
@@ -125,29 +115,123 @@ const createAsyncWithoutFlattening = <T>(
       }
     };
   };
-};
-
-export const createAsync = <T>(
-  callback: (
-    set: (arg: T | Async<T>) => void,
-    err: (arg: unknown) => void
-  ) => (() => void) | void
-): Async<T> => {
-  const subscribe = createAsyncWithoutFlattening<T>((set, err) => {
-    let unsubscribe: (() => void) | undefined;
-    return callback((arg: T | Async<T>) => {
-      if (unsubscribe) {
-        const unsubscribeSnapshot = unsubscribe;
-        unsubscribe = undefined;
-        unsubscribeSnapshot();
-      }
-      if (isAsync(arg)) {
-        unsubscribe = arg(set, err);
-      } else {
-        set(arg);
-      }
-    }, err);
-  });
 
   return Object.assign(subscribe, { [asyncSymbol]: true as const });
+};
+
+const asyncConstSymbol = Symbol("asyncConstSymbol");
+
+export interface AsyncConst<T> extends Async<T> {
+  [asyncConstSymbol]: true;
+}
+
+export const isAsyncConst = (arg: unknown): arg is Async<unknown> =>
+  typeof arg === "object" && arg !== null && asyncConstSymbol in arg;
+
+const noOp = () => {};
+
+export const createAsyncConst = <T>(
+  callback: (
+    set: (arg: T) => void,
+    err: (arg: unknown) => void
+  ) => (() => void) | void
+) => {
+  let unsubscribe: (() => void) | void | undefined | typeof voidSymbol =
+    voidSymbol;
+  let value: T | undefined;
+  let subscribers: Set<Subscriber<T>> | undefined = new Set();
+
+  const set = (newValue: T) => {
+    if (subscribers === undefined) {
+      throw new Error(
+        "Tried setting value of an async constant that already has a value."
+      );
+    }
+    if (subscribers.size === 0) {
+      throw new Error(
+        "Tried setting value of an async constant that has no subscribers."
+      );
+    }
+    unsubscribe = voidSymbol;
+    value = newValue;
+    const subscribersSnapshot = subscribers;
+    subscribers = undefined;
+    for (const [set] of subscribersSnapshot) {
+      if (set) {
+        try {
+          set(value);
+        } catch (error) {
+          setTimeout(() => {
+            throw error;
+          });
+        }
+      }
+    }
+  };
+
+  const err = (error: unknown) => {
+    if (subscribers === undefined) {
+      throw new Error(
+        "Tried erring an async constant that already has a value."
+      );
+    }
+    if (subscribers.size === 0) {
+      throw new Error(
+        "Tried erring an async constant that has no subscribers."
+      );
+    }
+    unsubscribe = voidSymbol;
+    value = undefined;
+    const subscribersSnapshot = subscribers;
+    subscribers = undefined;
+    for (const [, err] of subscribersSnapshot) {
+      try {
+        if (err) {
+          err(error);
+        } else {
+          throw error;
+        }
+      } catch (error) {
+        setTimeout(() => {
+          throw error;
+        });
+      }
+    }
+  };
+
+  const subscribe = (...subscriber: Subscriber<T>) => {
+    if (subscribers === undefined) {
+      const [set] = subscriber;
+      set?.(value as T);
+      return noOp;
+    }
+
+    subscribers.add(subscriber);
+    if (unsubscribe === voidSymbol && subscribers.size === 1) {
+      try {
+        unsubscribe = callback(set, err);
+      } catch (error) {
+        subscribers.delete(subscriber);
+        throw error;
+      }
+    }
+
+    return () => {
+      if (
+        subscribers !== undefined &&
+        subscribers.delete(subscriber) &&
+        unsubscribe !== voidSymbol &&
+        subscribers.size === 0
+      ) {
+        const unsubscribeSnapshot = unsubscribe;
+        unsubscribe = voidSymbol;
+        unsubscribeSnapshot?.();
+      }
+    };
+  };
+
+  return Object.assign(subscribe, {
+    [asyncSymbol]: true as const,
+    [asyncConstSymbol]: true as const,
+  });
 };
