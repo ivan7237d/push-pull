@@ -119,14 +119,11 @@ export const createAsync = <T>(
   return Object.assign(subscribe, { [asyncSymbol]: true as const });
 };
 
-const asyncConstSymbol = Symbol("asyncConstSymbol");
+declare const asyncConstSymbol: unique symbol;
 
 export interface AsyncConst<T> extends Async<T> {
   [asyncConstSymbol]: true;
 }
-
-export const isAsyncConst = (arg: unknown): arg is Async<unknown> =>
-  typeof arg === "object" && arg !== null && asyncConstSymbol in arg;
 
 const noOp = () => {};
 
@@ -232,6 +229,5 @@ export const createAsyncConst = <T>(
 
   return Object.assign(subscribe, {
     [asyncSymbol]: true as const,
-    [asyncConstSymbol]: true as const,
-  });
+  }) as AsyncConst<T>;
 };
