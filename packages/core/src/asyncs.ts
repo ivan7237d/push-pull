@@ -1,3 +1,6 @@
+/**
+ * Used as a key to nominally type async variables.
+ */
 const asyncSymbol = Symbol("asyncSymbol");
 
 type Subscriber<T> = [set?: (value: T) => void, err?: (error: unknown) => void];
@@ -23,83 +26,76 @@ export const createAsync = <T>(
   let unsubscribe: (() => void) | void | undefined | typeof voidSymbol =
     voidSymbol;
   let value: T | typeof voidSymbol = voidSymbol;
-  let subscribers = new Set<Subscriber<T>>();
-  let processingValue = false;
+  const subscribers = new Set<Subscriber<T>>();
+  let reentryState: AbortSetError | typeof voidSymbol | undefined = voidSymbol;
 
   const set = (newValue: T) => {
-    if (subscribers.size === 0) {
-      throw new Error("Called set when not subscribed.");
+    if (unsubscribe === voidSymbol) {
+      throw new Error(
+        "Tried setting value of an async variable when not subscribed."
+      );
     }
     if (newValue === value) {
       return;
     }
     value = newValue;
-    const syncReentry = processingValue;
-    processingValue = true;
-    for (const [set] of subscribers) {
-      if (set) {
-        try {
-          set(value);
-        } catch (error) {
-          if (error instanceof AbortSetError) {
-            return;
-          }
-          setTimeout(() => {
-            throw error;
-          });
-        }
+    const isReentry = reentryState === undefined;
+    reentryState = undefined;
+    try {
+      for (const [set] of subscribers) {
+        set?.(value);
       }
+    } catch (error) {
+      if (error !== reentryState) {
+        throw error;
+      }
+    } finally {
+      reentryState = voidSymbol;
     }
-    processingValue = false;
-    if (syncReentry) {
-      throw new AbortSetError(
+    if (isReentry) {
+      reentryState = new AbortSetError(
         "Will abort processing a value of an async variable because it has a newer value."
       );
+      throw reentryState;
     }
   };
 
   const err = (error: unknown) => {
-    if (subscribers.size === 0) {
-      throw new Error("Called err when not subscribed.");
+    if (unsubscribe === voidSymbol) {
+      throw new Error("Tried erring an async variable when not subscribed.");
     }
     unsubscribe = voidSymbol;
     value = voidSymbol;
-    const subscribersSnapshot = subscribers;
-    subscribers = new Set();
-    const syncReentry = processingValue;
-    processingValue = false;
-    for (const [, err] of subscribersSnapshot) {
-      try {
-        if (err) {
-          err(error);
-        } else {
-          throw error;
+    const isReentry = reentryState === undefined;
+    reentryState = voidSymbol;
+    for (const subscriber of subscribers) {
+      subscribers.delete(subscriber);
+      const [, err] = subscriber;
+      if (err) {
+        err(error);
+        if (unsubscribe !== voidSymbol) {
+          break;
         }
-      } catch (error) {
-        setTimeout(() => {
-          throw error;
-        });
+      } else {
+        throw error;
       }
     }
-    if (syncReentry) {
-      throw new AbortSetError(
+    if (isReentry) {
+      reentryState = new AbortSetError(
         "Will abort processing a value of an async variable because it has erred."
       );
+      throw reentryState;
     }
   };
 
   const subscribe = (...subscriber: Subscriber<T>) => {
     subscribers.add(subscriber);
-    try {
-      if (unsubscribe === voidSymbol && subscribers.size === 1) {
-        unsubscribe = callback(set, err);
-      } else if (value !== voidSymbol) {
-        const [set] = subscriber;
-        set?.(value);
-      }
-    } catch (error) {
-      subscribers.delete(subscriber);
-      throw error;
+    if (unsubscribe === voidSymbol && subscribers.size > 0) {
+      unsubscribe = undefined;
+      unsubscribe = callback(set, err);
+    } else if (value !== voidSymbol) {
+      const [set] = subscriber;
+      set?.(value);
     }
 
     return () => {
@@ -144,9 +140,9 @@ export const createAsyncConst = <T>(
         "Tried setting value of an async constant that already has a value."
       );
     }
-    if (subscribers.size === 0) {
+    if (unsubscribe === voidSymbol) {
       throw new Error(
-        "Tried setting value of an async constant that has no subscribers."
+        "Tried setting value of an async constant when not subscribed."
       );
     }
     unsubscribe = voidSymbol;
@@ -154,15 +150,7 @@ export const createAsyncConst = <T>(
     const subscribersSnapshot = subscribers;
     subscribers = undefined;
     for (const [set] of subscribersSnapshot) {
-      if (set) {
-        try {
-          set(value);
-        } catch (error) {
-          setTimeout(() => {
-            throw error;
-          });
-        }
-      }
+      set?.(value);
     }
   };
 
@@ -172,26 +160,21 @@ export const createAsyncConst = <T>(
         "Tried erring an async constant that already has a value."
       );
     }
-    if (subscribers.size === 0) {
-      throw new Error(
-        "Tried erring an async constant that has no subscribers."
-      );
+    if (unsubscribe === voidSymbol) {
+      throw new Error("Tried erring an async constant when not subscribed.");
     }
     unsubscribe = voidSymbol;
     value = undefined;
-    const subscribersSnapshot = subscribers;
-    subscribers = undefined;
-    for (const [, err] of subscribersSnapshot) {
-      try {
-        if (err) {
-          err(error);
-        } else {
-          throw error;
+    for (const subscriber of subscribers) {
+      subscribers.delete(subscriber);
+      const [, err] = subscriber;
+      if (err) {
+        err(error);
+        if (unsubscribe !== voidSymbol) {
+          break;
         }
-      } catch (error) {
-        setTimeout(() => {
-          throw error;
-        });
+      } else {
+        throw error;
       }
     }
   };
@@ -204,13 +187,9 @@ export const createAsyncConst = <T>(
     }
 
     subscribers.add(subscriber);
-    if (unsubscribe === voidSymbol && subscribers.size === 1) {
-      try {
-        unsubscribe = callback(set, err);
-      } catch (error) {
-        subscribers.delete(subscriber);
-        throw error;
-      }
+    if (unsubscribe === voidSymbol && subscribers.size > 0) {
+      unsubscribe = undefined;
+      unsubscribe = callback(set, err);
     }
 
     return () => {
