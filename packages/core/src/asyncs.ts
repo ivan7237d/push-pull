@@ -15,8 +15,6 @@ export const isAsync = (arg: unknown): arg is Async<unknown> =>
 
 const voidSymbol = Symbol("voidSymbol");
 
-export class AbortSetError extends Error {}
-
 export const createAsync = <T>(
   callback: (
     set: (arg: T) => void,
@@ -27,7 +25,7 @@ export const createAsync = <T>(
     voidSymbol;
   let value: T | typeof voidSymbol = voidSymbol;
   const subscribers = new Set<Subscriber<T>>();
-  let reentryState: AbortSetError | typeof voidSymbol | undefined = voidSymbol;
+  let inSet = false;
 
   const set = (newValue: T) => {
     if (unsubscribe === voidSymbol) {
@@ -39,24 +37,26 @@ export const createAsync = <T>(
       return;
     }
     value = newValue;
-    const isReentry = reentryState === undefined;
-    reentryState = undefined;
+    if (inSet) {
+      return;
+    }
+    inSet = true;
     try {
-      for (const [set] of subscribers) {
-        set?.(value);
-      }
-    } catch (error) {
-      if (error !== reentryState) {
-        throw error;
+      outerLoop: while (true) {
+        const valueSnapshot: T = value;
+        for (const [set] of subscribers) {
+          set?.(value);
+          if (value === voidSymbol) {
+            return;
+          }
+          if (value !== valueSnapshot) {
+            continue outerLoop;
+          }
+        }
+        return;
       }
     } finally {
-      reentryState = voidSymbol;
-    }
-    if (isReentry) {
-      reentryState = new AbortSetError(
-        "Will abort processing a value of an async variable because it has a newer value."
-      );
-      throw reentryState;
+      inSet = false;
     }
   };
 
@@ -66,8 +66,6 @@ export const createAsync = <T>(
     }
     unsubscribe = voidSymbol;
     value = voidSymbol;
-    const isReentry = reentryState === undefined;
-    reentryState = voidSymbol;
     for (const subscriber of subscribers) {
       subscribers.delete(subscriber);
       const [, err] = subscriber;
@@ -79,12 +77,6 @@ export const createAsync = <T>(
       } else {
         throw error;
       }
-    }
-    if (isReentry) {
-      reentryState = new AbortSetError(
-        "Will abort processing a value of an async variable because it has erred."
-      );
-      throw reentryState;
     }
   };
 
