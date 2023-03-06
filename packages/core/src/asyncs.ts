@@ -85,7 +85,7 @@ export const createAsync = <T>(
     if (unsubscribe === voidSymbol && subscribers.size > 0) {
       unsubscribe = undefined;
       unsubscribe = callback(set, err);
-    } else if (value !== voidSymbol) {
+    } else if (value !== voidSymbol && !inSet) {
       const [set] = subscriber;
       set?.(value);
     }
