@@ -62,7 +62,9 @@ export const createAsync = <T>(
 
   const err = (error: unknown) => {
     if (unsubscribe === voidSymbol) {
-      throw new Error("Tried erring an async variable when not subscribed.");
+      throw new Error("Tried erring an async variable when not subscribed.", {
+        cause: error,
+      });
     }
     unsubscribe = voidSymbol;
     value = voidSymbol;
@@ -149,11 +151,14 @@ export const createAsyncConst = <T>(
   const err = (error: unknown) => {
     if (subscribers === undefined) {
       throw new Error(
-        "Tried erring an async constant that already has a value."
+        "Tried erring an async constant that already has a value.",
+        { cause: error }
       );
     }
     if (unsubscribe === voidSymbol) {
-      throw new Error("Tried erring an async constant when not subscribed.");
+      throw new Error("Tried erring an async constant when not subscribed.", {
+        cause: error,
+      });
     }
     unsubscribe = voidSymbol;
     value = undefined;
