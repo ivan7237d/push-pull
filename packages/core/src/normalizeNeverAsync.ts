@@ -1,5 +1,6 @@
-import { Async, AsyncConst } from "./asyncs";
+import { AsyncConst } from "./createAsyncConst";
+import { AsyncVar } from "./createAsyncVar";
 
-export type NormalizeNeverAsync<Arg> = Arg extends Async<never>
+export type NormalizeNeverAsync<Arg> = Arg extends AsyncVar<never>
   ? AsyncConst<never>
   : Arg;

@@ -1,3 +1,5 @@
-export { createAsync, createAsyncConst, isAsync } from "./asyncs";
-export type { Async, AsyncConst } from "./asyncs";
+export { createAsyncConst } from "./createAsyncConst";
+export type { AsyncConst } from "./createAsyncConst";
+export { createAsyncVar, isAsync } from "./createAsyncVar";
+export type { AsyncVar, Subscriber } from "./createAsyncVar";
 export { map } from "./map";

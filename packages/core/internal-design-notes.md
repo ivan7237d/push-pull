@@ -29,3 +29,5 @@ Does this mean no manual unsubscribe? In that case, how to implement snapshot/fa
 ## Should `map` unsub from inner async _after_ subscribing to a new inner async?
 
 ## Is there a way to make the map operator implementation simpler?
+
+## Are some callbacks theoretically possible to do run synchronously?
