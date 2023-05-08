@@ -1,6 +1,6 @@
 # Internal design notes
 
-Motivation behind choices made when building this library.
+Motivation behind choices made when building this library. This motivation is sometimes based on intuition, so don't look at what's written here as set in stone.
 
 ## Why we can't have automatic dependency tracking or prevention of redundant computations like it works for signals?
 
@@ -30,7 +30,7 @@ When an async const fires `dispose` right after `set`, it's nice that we do not 
 
 ## Are some callbacks theoretically possible to do run synchronously?
 
-Yes, in theory `set` doesn't have to be deferred if it's run from subscribe function or from an async callback scheduled from a `set` callback. The only reason why `set` callbacks are deferred is simplicity: it seems that _not_ deferring them is an extra bit of complexity on top of default design, instead of the other way round. Also, as soon `set` has been called, you would normally end the execution of a function, so deferring it doesn't make a difference - it would be called as the last step either way.
+Yes, in theory `set` doesn't have to be deferred if it's run from subscribe function or from an async callback scheduled from a `set` callback. The only reason why `set` callbacks are always deferred is simplicity: it seems that _not_ deferring them is an extra bit of complexity on top of default design, instead of the other way round. Also, as soon `set` has been called, you would normally end the execution of a function, so deferring it doesn't make a difference - it would be called as the last step either way.
 
 # Open questions
 
