@@ -33,7 +33,7 @@ export const createAsyncVar = <T>(
   let unsubscribe: (() => void) | undefined | typeof voidSymbol = voidSymbol;
   const cleanSubscribers = new Set<Subscriber<T>>();
   const dirtySubscribers = new Map<Subscriber<T>, T | typeof voidSymbol>();
-  let inCallbackLoop = false;
+  let microtaskQueued = false;
 
   const set = (clientValue: T) => {
     if (clientValue !== value) {
@@ -42,20 +42,20 @@ export const createAsyncVar = <T>(
       }
       cleanSubscribers.clear();
       value = clientValue;
-      maybeStartCallbackLoop();
+      maybeQueueMicrotask();
     }
   };
 
   const err = (clientError: unknown) => {
     error = clientError;
     unsubscribe = voidSymbol;
-    maybeStartCallbackLoop();
+    maybeQueueMicrotask();
   };
 
   const dispose = () => {
     stable = true;
     unsubscribe = voidSymbol;
-    maybeStartCallbackLoop();
+    maybeQueueMicrotask();
   };
 
   const subscribe = (subscriber: Subscriber<T> = {}) => {
@@ -63,7 +63,7 @@ export const createAsyncVar = <T>(
     if (unsubscribe === voidSymbol) {
       unsubscribe = undefined;
     }
-    maybeStartCallbackLoop();
+    maybeQueueMicrotask();
 
     return () => {
       if (
@@ -75,16 +75,12 @@ export const createAsyncVar = <T>(
         if (unsubscribe === undefined) {
           unsubscribe = voidSymbol;
         }
-        maybeStartCallbackLoop();
+        maybeQueueMicrotask();
       }
     };
   };
 
-  const maybeStartCallbackLoop = () => {
-    if (inCallbackLoop) {
-      return;
-    }
-    inCallbackLoop = true;
+  const runCallbacks = () => {
     try {
       callbackLoop: while (true) {
         if (unsubscribe === undefined) {
@@ -178,12 +174,27 @@ export const createAsyncVar = <T>(
             continue callbackLoop;
           }
         }
-
         error = voidSymbol;
+        break callbackLoop;
       }
+      microtaskQueued = false;
     } finally {
-      inCallbackLoop = false;
+      // If an error was thrown, let it propagate, but continue calling
+      // remaining callbacks. Dev tools will be able to pause at the place the
+      // error was thrown when the user switches on "Pause on uncaught
+      // exceptions", yet one bad subscriber will not break other subscribers.
+      if (microtaskQueued) {
+        queueMicrotask(runCallbacks);
+      }
     }
+  };
+
+  const maybeQueueMicrotask = () => {
+    if (microtaskQueued) {
+      return;
+    }
+    microtaskQueued = true;
+    queueMicrotask(runCallbacks);
   };
 
   return Object.assign(subscribe, { [asyncSymbol]: true as const });

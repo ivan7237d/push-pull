@@ -1,14 +1,15 @@
-import { Async, AsyncConst, createAsync, isAsync } from "./asyncs";
+import { AsyncConst } from "./createAsyncConst";
+import { AsyncVar, createAsyncVar, isAsync } from "./createAsyncVar";
 import { NormalizeNeverAsync } from "./normalizeNeverAsync";
 
 export const map =
   <
     ToMaybeAsync,
     FromMaybeAsync,
-    From extends FromMaybeAsync extends Async<infer From>
+    From extends FromMaybeAsync extends AsyncVar<infer From>
       ? From
       : FromMaybeAsync,
-    To extends ToMaybeAsync extends Async<infer To> ? To : ToMaybeAsync
+    To extends ToMaybeAsync extends AsyncVar<infer To> ? To : ToMaybeAsync
   >(
     project: (from: From) => ToMaybeAsync
   ) =>
@@ -18,67 +19,72 @@ export const map =
     FromMaybeAsync extends AsyncConst<unknown>
       ? ToMaybeAsync extends AsyncConst<unknown>
         ? AsyncConst<To>
-        : ToMaybeAsync extends Async<unknown>
-        ? Async<To>
+        : ToMaybeAsync extends AsyncVar<unknown>
+        ? AsyncVar<To>
         : AsyncConst<To>
-      : FromMaybeAsync extends Async<unknown>
-      ? Async<To>
+      : FromMaybeAsync extends AsyncVar<unknown>
+      ? AsyncVar<To>
       : ToMaybeAsync extends AsyncConst<unknown>
       ? AsyncConst<To>
-      : ToMaybeAsync extends Async<unknown>
-      ? Async<To>
+      : ToMaybeAsync extends AsyncVar<unknown>
+      ? AsyncVar<To>
       : AsyncConst<To>
   > =>
-    createAsync((set, err) => {
+    createAsyncVar(({ set, err, dispose }) => {
       let unsubscribeFrom: (() => void) | undefined;
       let unsubscribeTo: (() => void) | undefined;
+      let disposedFrom = false;
+      let disposedTo = false;
 
       const fromSet = (value: From) => {
-        const projected = project(value);
-        if (!unsubscribeFrom) {
+        unsubscribeTo?.();
+        let projected;
+        try {
+          projected = project(value);
+        } catch (error) {
+          err(error);
           return;
         }
-        if (isAsync(projected)) {
-          const newUnsubscribeTo = projected(set, (error) => {
-            unsubscribeTo = undefined;
-            const unsubscribeFromSnapshot = unsubscribeFrom;
-            unsubscribeFrom = undefined;
-            err(error);
-            unsubscribeFromSnapshot?.();
-          });
-          if (unsubscribeFrom as (() => void) | undefined) {
-            const unsubscribeToSnapshot = unsubscribeTo;
-            unsubscribeTo = newUnsubscribeTo;
-            unsubscribeToSnapshot?.();
+
+        const maybeDispose = () => {
+          if (disposedFrom) {
+            dispose();
           } else {
-            newUnsubscribeTo();
+            disposedTo = true;
           }
+        };
+
+        if (isAsync(projected)) {
+          unsubscribeTo = projected({
+            set,
+            err,
+            dispose: maybeDispose,
+          });
         } else {
           set(projected);
-          const unsubscribeToSnapshot = unsubscribeTo;
-          unsubscribeTo = undefined;
-          unsubscribeToSnapshot?.();
+          maybeDispose();
         }
       };
 
       if (isAsync(source)) {
-        unsubscribeFrom = (source as Async<From>)(fromSet, (error) => {
-          unsubscribeFrom = undefined;
-          const unsubscribeToSnapshot = unsubscribeTo;
-          unsubscribeTo = undefined;
-          err(error);
-          unsubscribeToSnapshot?.();
+        unsubscribeFrom = (source as AsyncVar<From>)({
+          set: fromSet,
+          err,
+          dispose: () => {
+            if (disposedTo) {
+              dispose();
+            } else {
+              disposedFrom = true;
+            }
+          },
         });
       } else {
+        disposedFrom = true;
         fromSet(source as unknown as From);
       }
 
       return () => {
-        const unsubscribeToSnapshot = unsubscribeTo;
-        unsubscribeTo = undefined;
-        const unsubscribeFromSnapshot = unsubscribeFrom;
-        unsubscribeFrom = undefined;
-        unsubscribeToSnapshot?.();
-        unsubscribeFromSnapshot?.();
+        unsubscribeTo?.();
+        unsubscribeFrom?.();
       };
     }) as any;
