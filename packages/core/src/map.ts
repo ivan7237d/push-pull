@@ -33,8 +33,6 @@ export const map =
     createAsyncVar(({ set, err, dispose }) => {
       let unsubscribeFrom: (() => void) | undefined;
       let unsubscribeTo: (() => void) | undefined;
-      let disposedFrom = false;
-      let disposedTo = false;
 
       const fromSet = (value: From) => {
         unsubscribeTo?.();
@@ -42,22 +40,26 @@ export const map =
         try {
           projected = project(value);
         } catch (error) {
+          unsubscribeFrom?.();
           err(error);
           return;
         }
 
         const maybeDispose = () => {
-          if (disposedFrom) {
-            dispose();
+          if (unsubscribeFrom) {
+            unsubscribeTo = undefined;
           } else {
-            disposedTo = true;
+            dispose();
           }
         };
 
         if (isAsync(projected)) {
           unsubscribeTo = projected({
             set,
-            err,
+            err: (error) => {
+              unsubscribeFrom?.();
+              err(error);
+            },
             dispose: maybeDispose,
           });
         } else {
@@ -69,17 +71,19 @@ export const map =
       if (isAsync(source)) {
         unsubscribeFrom = (source as AsyncVar<From>)({
           set: fromSet,
-          err,
+          err: (error) => {
+            unsubscribeTo?.();
+            err(error);
+          },
           dispose: () => {
-            if (disposedTo) {
-              dispose();
+            if (unsubscribeTo) {
+              unsubscribeFrom = undefined;
             } else {
-              disposedFrom = true;
+              dispose();
             }
           },
         });
       } else {
-        disposedFrom = true;
         fromSet(source as unknown as From);
       }
 
