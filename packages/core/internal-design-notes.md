@@ -12,6 +12,8 @@ As an example, imagine there are async variables A, B and C. B and C that depend
 
 The problem is that the only way to achieve this would be to know the dependency graph. In the case of async variables, the only thing we know is which variables are subscribed to which, but if C is subscribed to A it doesn't necessarily mean that C will synchronously change its value if the value of A changes: instead, C can schedule a timeout that will change its value at a later time. Since we don't know the dependency graph as far as synchronous computations are concerned, we have no way of optimizing the execution flow.
 
+The fact that we're giving up on prevention of redundant computations means that thankfully this library doesn't have to be coupled with a signals library - because if we had a dependency graph to analyze, that graph would have to be integrated with the signals' graph.
+
 ## Why we can't have automatic unsubscription like it works for signals?
 
 We're talking here about tracking dependencies between subscriptions, so imagine some subscription is initialized, and while the initialization function runs, another subscription is created - that would be a dependent subscription. The idea is to automatically unsubscribe dependent subscriptions if the parent subscription is unsubscribed.
