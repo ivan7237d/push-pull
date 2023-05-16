@@ -2,9 +2,15 @@
 
 Motivation behind choices made when building this library. This motivation is sometimes based on intuition, so don't look at what's written here as set in stone.
 
-## Why we can't have automatic dependency tracking or prevention of redundant computations like it works for signals?
+## Why we can't have automatic dependency tracking like it works for signals?
 
 Signals have initial value, so it's possible to immediately run a derived computation or an effect to determine dependencies. Asyncs do not.
+
+## Why can't we have prevention of redundant computations like it works for signals?
+
+As an example, imagine there are async variables A, B and C. B and C that depend on A, B depends on C, and no async callbacks are involved (B and C just synchronously emit a value computed from their dependencies). A emits a new value, we compute the value of B and notify its listeners, then we compute the value of C and process its listeners, but B is one of those listeners, so B will end up with a new value and we would have to notify its listeners the second time. Ideally, we would figure out that we should process C's listeners before B's, and then B will only emit once.
+
+The problem is that the only way to achieve this would be to know the dependency graph. In the case of async variables, the only thing we know is which variables are subscribed to which, but if C is subscribed to A it doesn't necessarily mean that C will synchronously change its value if the value of A changes: instead, C can schedule a timeout that will change its value at a later time. Since we don't know the dependency graph as far as synchronous computations are concerned, we have no way of optimizing the execution flow.
 
 ## Why we can't have automatic unsubscription like it works for signals?
 
@@ -31,7 +37,3 @@ When an async const fires `dispose` right after `set`, it's nice that we do not 
 ## Are some callbacks theoretically possible to do run synchronously?
 
 Yes, in theory `set` doesn't have to be deferred if it's run from subscribe function or from an async callback scheduled from a `set` callback. The only reason why `set` callbacks are always deferred is simplicity: it seems that _not_ deferring them is an extra bit of complexity on top of default design, instead of the other way round. Also, as soon `set` has been called, you would normally end the execution of a function, so deferring it doesn't make a difference - it would be called as the last step either way.
-
-# Open questions
-
-## Should `map` unsub from inner async _after_ subscribing to a new inner async?
