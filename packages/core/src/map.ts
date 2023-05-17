@@ -34,7 +34,7 @@ export const map =
       let unsubscribeFrom: (() => void) | undefined;
       let unsubscribeTo: (() => void) | undefined;
 
-      const fromSet = (value: From) => {
+      const setFrom = (value: From) => {
         unsubscribeTo?.();
         let projected;
         try {
@@ -45,7 +45,7 @@ export const map =
           return;
         }
 
-        const maybeDispose = () => {
+        const disposeTo = () => {
           if (unsubscribeFrom) {
             unsubscribeTo = undefined;
           } else {
@@ -60,17 +60,17 @@ export const map =
               unsubscribeFrom?.();
               err(error);
             },
-            dispose: maybeDispose,
+            dispose: disposeTo,
           });
         } else {
           set(projected);
-          maybeDispose();
+          disposeTo();
         }
       };
 
       if (isAsync(source)) {
         unsubscribeFrom = (source as AsyncVar<From>)({
-          set: fromSet,
+          set: setFrom,
           err: (error) => {
             unsubscribeTo?.();
             err(error);
@@ -84,7 +84,7 @@ export const map =
           },
         });
       } else {
-        fromSet(source as unknown as From);
+        setFrom(source as unknown as From);
       }
 
       return () => {
