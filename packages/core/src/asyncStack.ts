@@ -10,7 +10,7 @@ export const extendAsyncStack = <Args extends unknown[], Retval>(
   stack: Decorator,
   callback: (...args: Args) => Retval,
   ...args: Args
-) => {
+): Retval => {
   const globalStackSnapshot = globalStack;
   globalStack = globalStackSnapshot
     ? (callback) => globalStackSnapshot(stack(callback))
