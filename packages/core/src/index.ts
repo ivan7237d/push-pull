@@ -1,3 +1,4 @@
+export { withAsyncStack } from "./asyncStack";
 export { createAsyncConst } from "./createAsyncConst";
 export type { AsyncConst } from "./createAsyncConst";
 export { createAsyncVar, isAsync } from "./createAsyncVar";
