@@ -23,14 +23,20 @@ export const extendAsyncStack = <Args extends unknown[], Retval>(
 };
 
 export const withAsyncStack: Decorator = (callback) => {
+  if (globalStack === undefined) {
+    return callback;
+  }
   const stack = globalStack;
   return (...args) => {
-    const globalStackSnapshot = globalStack;
-    globalStack = stack;
-    try {
-      return (stack ? stack(callback) : callback)(...args);
-    } finally {
-      globalStack = globalStackSnapshot;
+    if (globalStack === undefined) {
+      globalStack = stack;
+      try {
+        return stack(callback)(...args);
+      } finally {
+        globalStack = undefined;
+      }
+    } else {
+      return callback(...args);
     }
   };
 };
