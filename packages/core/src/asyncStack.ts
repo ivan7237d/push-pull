@@ -28,15 +28,16 @@ export const withAsyncStack: Decorator = (callback) => {
   }
   const stack = globalStack;
   return (...args) => {
-    if (globalStack === undefined) {
-      globalStack = stack;
-      try {
-        return stack(callback)(...args);
-      } finally {
-        globalStack = undefined;
-      }
-    } else {
-      return callback(...args);
+    if (globalStack) {
+      throw new Error(
+        "You cannot call a function wrapped in `withAsyncStack` synchronously."
+      );
+    }
+    globalStack = stack;
+    try {
+      return stack(callback)(...args);
+    } finally {
+      globalStack = undefined;
     }
   };
 };
