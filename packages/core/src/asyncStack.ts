@@ -1,35 +1,42 @@
-let syncStack: ((callback: () => void) => void) | undefined;
+interface Decorator {
+  <Args extends unknown[], Retval>(callback: (...args: Args) => Retval): (
+    ...args: Args
+  ) => Retval;
+}
 
-export const callWithAsyncStack = (
-  stack: (callback: () => void) => void,
-  callback: () => void
+let syncStack: Decorator | undefined;
+
+export const extendAsyncStack = <Args extends unknown[], Retval>(
+  stack: Decorator,
+  callback: (...args: Args) => Retval,
+  ...args: Args
 ) => {
   const syncStackSnapshot = syncStack;
   syncStack = syncStackSnapshot
-    ? (callback) => syncStackSnapshot(() => stack(callback))
+    ? (callback) => syncStackSnapshot(stack(callback))
     : stack;
   try {
-    stack(callback);
+    return stack(callback)(...args);
   } finally {
     syncStack = syncStackSnapshot;
   }
 };
 
-export const withAsyncStack = (callback: () => void): (() => void) => {
+export const withAsyncStack: Decorator = (callback) => {
   if (syncStack === undefined) {
     return callback;
   }
   const stack = syncStack;
-  return () => {
+  return (...args) => {
     if (syncStack === undefined) {
       syncStack = stack;
       try {
-        stack(callback);
+        return stack(callback)(...args);
       } finally {
         syncStack = undefined;
       }
     } else {
-      callback();
+      return callback(...args);
     }
   };
 };
