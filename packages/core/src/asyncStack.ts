@@ -4,33 +4,33 @@ interface Decorator {
   ) => Retval;
 }
 
-let syncStack: Decorator | undefined;
+let globalStack: Decorator | undefined;
 
 export const extendAsyncStack = <Args extends unknown[], Retval>(
   stack: Decorator,
   callback: (...args: Args) => Retval,
   ...args: Args
 ) => {
-  const syncStackSnapshot = syncStack;
-  syncStack = syncStackSnapshot
-    ? (callback) => syncStackSnapshot(stack(callback))
+  const globalStackSnapshot = globalStack;
+  globalStack = globalStackSnapshot
+    ? (callback) => globalStackSnapshot(stack(callback))
     : stack;
   try {
     return stack(callback)(...args);
   } finally {
-    syncStack = syncStackSnapshot;
+    globalStack = globalStackSnapshot;
   }
 };
 
 export const withAsyncStack: Decorator = (callback) => {
-  const stack = syncStack;
+  const stack = globalStack;
   return (...args) => {
-    const syncStackSnapshot = syncStack;
-    syncStack = stack;
+    const globalStackSnapshot = globalStack;
+    globalStack = stack;
     try {
       return (stack ? stack(callback) : callback)(...args);
     } finally {
-      syncStack = syncStackSnapshot;
+      globalStack = globalStackSnapshot;
     }
   };
 };
