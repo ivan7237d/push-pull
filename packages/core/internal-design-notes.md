@@ -16,11 +16,13 @@ The fact that we're giving up on prevention of redundant computations means that
 
 ## Why we can't have automatic unsubscription like it works for signals?
 
-We're talking here about tracking dependencies between subscriptions, so imagine some subscription is initialized, and while the initialization function runs, another subscription is created - that would be a dependent subscription. The idea is to automatically unsubscribe dependent subscriptions if the parent subscription is unsubscribed.
+We're talking here about tracking dependencies between subscriptions, so imagine some subscription is initialized, and while the initialization function runs, another subscription is created - that would be a dependent subscription unless it's explicitly attached to a different subscription root. The idea is to automatically unsubscribe dependent subscriptions if the parent subscription is unsubscribed.
 
 One problem with this is that subscription/unsubscription process as a whole still can't be made fully automatic: there are cases when you need to unsub the child subscription while the parent one is still going. Say you're building an operator that looks at one async variable, and as long as it doesn't yet have any value, "falls back" to another async variable. As soon as the first variable gets a value, the fallback one will need to be unsubbed. So there has to be a client-exposed "unsubscribe" handle.
 
-Another way to look at it is that there already is automatic unsubscription, it's just that it's implemented by operators.
+There's also a concern that we'd lose explicit order of execution of teardown functions.
+
+Another way to look at it is that there already is automatic unsubscription, it's just that it's implemented by operators. Curious how instead of a single border between library-land and user-land, we have two borders: one between async variables/constants and operators, and one between operators and everything else.
 
 ## Why not use abort errors for glitch prevention instead of deferring callbacks?
 
@@ -35,7 +37,3 @@ This is because those errors are not based on the state of an async, but rather 
 ## Why when converting an async const to a promise, we have to wait for `dispose` to fire?
 
 When an async const fires `dispose` right after `set`, it's nice that we do not unsubscribe before `dispose`, because this makes sure that any upstream asyncs keep the value after they've been unsubscribed. But that's not the reason why we do it this way - the real reason is that an async const can err after it has set a value, signalling "I have a new value here, so I can't satisfy the async const contract after all".
-
-## Are some callbacks theoretically possible to do run synchronously?
-
-Yes, in theory `set` doesn't have to be deferred if it's run from subscribe function or from an async callback scheduled from a `set` callback. The only reason why `set` callbacks are always deferred is simplicity: it seems that _not_ deferring them is an extra bit of complexity on top of default design, instead of the other way round. Also, as soon `set` has been called, you would normally end the execution of a function, so deferring it doesn't make a difference - it would be called as the last step either way.
