@@ -16,13 +16,15 @@ The fact that we're giving up on prevention of redundant computations means that
 
 ## Why we can't have automatic unsubscription like it works for signals?
 
-We're talking here about tracking dependencies between subscriptions, so imagine some subscription is initialized, and while the initialization function runs, another subscription is created - that would be a dependent subscription unless it's explicitly attached to a different subscription root. The idea is to automatically unsubscribe dependent subscriptions if the parent subscription is unsubscribed.
+We're talking here about tracking dependencies between subscriptions, so imagine some subscription is initialized, and while the initialization function runs, another subscription is created - that would be a dependent subscription. The idea is to automatically unsubscribe dependent subscriptions if the parent subscription is unsubscribed.
 
-One problem with this is that subscription/unsubscription process as a whole still can't be made fully automatic: there are cases when you need to unsub the child subscription while the parent one is still going. Say you're building an operator that looks at one async variable, and as long as it doesn't yet have any value, "falls back" to another async variable. As soon as the first variable gets a value, the fallback one will need to be unsubbed. So there has to be a client-exposed "unsubscribe" handle.
+One problem with this is that subscription/unsubscription process as a whole still can't be made fully automatic: there are cases when you need to unsub the child subscription while the parent one is still going. Say you're building an operator that looks at one async variable, and as long as it doesn't yet have any value, "falls back" to another async variable. As soon as the preferred variable gets a value, the fallback one will need to be unsubbed. So there has to be a client-exposed "unsubscribe" handle anyhow.
 
-There's also a concern that we'd lose explicit order of execution of teardown functions.
+On the other hand, sometimes you want to keep the child subscription going when the parent subscription has been unsubbed, for example when you're making an HTTP request and you want to keep the request going even if the client unsubs early so you can cache the response. The need to keep the child going comes up only when side effects are involved, but look at it this way: there's nothing stopping the user from using `setTimeout` to get something to fire after the async variable is unsubbed - why should we stop them from doing the same thing using the `delay` function instead of `setTimeout`?
 
-Another way to look at it is that there already is automatic unsubscription, it's just that it's implemented by operators. Curious how instead of a single border between library-land and user-land, we have two borders: one between async variables/constants and operators, and one between operators and everything else.
+Also, there's a concern that we'd lose explicit order of execution of teardown functions.
+
+In a way there already exists automatic unsubscription, it's just that it's implemented by operators. Curious how instead of a single border between library-land and user-land, we have two borders: one between async variables/constants and operators, and one between operators and everything else.
 
 ## Why not use abort errors for glitch prevention instead of deferring callbacks?
 
