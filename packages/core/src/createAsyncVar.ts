@@ -21,7 +21,7 @@ export const isAsync = (arg: unknown): arg is AsyncVar<unknown> =>
 
 const getCallbackOrderError = () =>
   new Error(
-    "You cannot call `set`, `err` and `dispose` callbacks of an async variable after you've called `err` or `dispose`, or after the teardown function has been called."
+    "You cannot call `set`, `err` and `dispose` handles passed to a producer function after you've called `err` or `dispose`, or after the teardown function has been called."
   );
 
 export const createAsyncVar = <T>(
