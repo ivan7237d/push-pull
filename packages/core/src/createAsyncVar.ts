@@ -19,7 +19,7 @@ export interface AsyncVar<T> {
 export const isAsync = (arg: unknown): arg is AsyncVar<unknown> =>
   typeof arg === "object" && arg !== null && asyncSymbol in arg;
 
-const getCallbackOrderError = () =>
+const getProducerDisposedError = () =>
   new Error(
     "You cannot call `set`, `err` and `dispose` handles passed to a producer function after you've called `err` or `dispose`, or after the teardown function has been called."
   );
@@ -95,20 +95,20 @@ export const createAsyncVar = <T>(
           const clientUnsubscribe = callback({
             set: (value) => {
               if (disposed) {
-                throw getCallbackOrderError();
+                throw getProducerDisposedError();
               }
               set(value);
             },
             err: (error) => {
               if (disposed) {
-                throw getCallbackOrderError();
+                throw getProducerDisposedError();
               }
               disposed = true;
               err(error);
             },
             dispose: () => {
               if (disposed) {
-                throw getCallbackOrderError();
+                throw getProducerDisposedError();
               }
               disposed = true;
               dispose();
