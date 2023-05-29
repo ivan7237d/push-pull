@@ -10,9 +10,9 @@ Signals have initial value, so it's possible to immediately run a derived comput
 
 As an example, imagine there are async variables A, B and C. B and C that depend on A, B depends on C, and no async callbacks are involved (B and C just synchronously emit a value computed from their dependencies). A emits a new value, we compute the value of B and notify its listeners, then we compute the value of C and process its listeners, but B is one of those listeners, so B will end up with a new value and we would have to notify its listeners the second time. Ideally, we would figure out that we should process C's listeners before B's, and then B will only emit once.
 
-The problem is that the only way to achieve this would be to know the dependency graph. In the case of async variables, the only thing we know is which variables are subscribed to which, but if C is subscribed to A it doesn't necessarily mean that C will synchronously change its value if the value of A changes: instead, C can schedule a timeout that will change its value at a later time. Since we don't know the dependency graph as far as synchronous computations are concerned, we have no way of optimizing the execution flow.
+The problem is that the only way to achieve this would be to know the dependency graph. In the case of async variables, the only thing we know is which variables are subscribed to which, but if C is subscribed to A it doesn't necessarily mean that C will synchronously change its value if the value of A changes: instead, C can schedule a timeout that will change its value at a later time. Since we don't know the dependency graph as far as synchronous changes are concerned, we have no way of optimizing the execution.
 
-The fact that we're giving up on prevention of redundant computations means that thankfully this library doesn't have to be coupled with a signals library - because if we had a dependency graph to analyze, that graph would have to be interleaved with the signals' graph.
+The fact that prevention of redundant computations is unfeasible means that thankfully this library doesn't have to be coupled with a signals library - because if we had a dependency graph to analyze, that graph would have to be interleaved with the signals' graph.
 
 ## Why we can't have automatic unsubscription like it works for signals?
 
