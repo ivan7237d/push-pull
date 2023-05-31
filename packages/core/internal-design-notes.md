@@ -8,7 +8,7 @@ Signals have initial value, so it's possible to immediately run a derived comput
 
 ## Why can't we have prevention of redundant computations like it works for signals?
 
-As an example, imagine there are async variables A, B and C. B and C that depend on A, B depends on C, and no async callbacks are involved (B and C just synchronously emit a value computed from their dependencies). A emits a new value, we compute the value of B and notify its listeners, then we compute the value of C and process its listeners, but B is one of those listeners, so B will end up with a new value and we would have to notify its listeners the second time. Ideally, we would figure out that we should process C's listeners before B's, and then B will only emit once.
+As an example, imagine there are async variables A, B and C, and changes synchronously propagate like this: A -> B, C; C -> B. A emits a new value, we compute the value of B and notify its listeners, then we compute the value of C and process its listeners, but B is one of those listeners, so B will end up with a new value and we would have to notify its listeners the second time. Ideally, we would figure out that we should process C's listeners before B's, and then B will only emit once.
 
 The problem is that the only way to achieve this would be to know the dependency graph. In the case of async variables, the only thing we know is which variables are subscribed to which, but if C is subscribed to A it doesn't necessarily mean that C will synchronously change its value if the value of A changes: instead, C can schedule a timeout that will change its value at a later time. Since we don't know the dependency graph as far as synchronous changes are concerned, we have no way of optimizing the execution.
 
