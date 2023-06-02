@@ -5,14 +5,14 @@ import { voidSymbol } from "./utils";
  */
 const asyncSymbol = Symbol("asyncSymbol");
 
-export interface Subscriber<T> {
+export interface Consumer<T> {
   set?: (value: T) => void;
   err?: (error: unknown) => void;
   dispose?: () => void;
 }
 
 export interface AsyncVar<T> {
-  (subscriber?: Subscriber<T>): () => void;
+  (subscriber?: Consumer<T>): () => void;
   [asyncSymbol]: true;
 }
 
@@ -21,18 +21,18 @@ export const isAsync = (arg: unknown): arg is AsyncVar<unknown> =>
 
 const getProducerDisposedError = () =>
   new Error(
-    "You cannot call `set`, `err` and `dispose` handles passed to a producer function after you've called `err` or `dispose`, or after the teardown function has been called."
+    "You cannot call `set`, `err` and `dispose` publisher functions (the handles passed by `createAsyncVar` to its callback) after you've called `err` or `dispose`, or after the teardown function has been called."
   );
 
 export const createAsyncVar = <T>(
-  callback: (subscriber: Required<Subscriber<T>>) => (() => void) | void
+  produce: (publisher: Required<Consumer<T>>) => (() => void) | void
 ) => {
   let value: T | typeof voidSymbol = voidSymbol;
   let error: unknown = voidSymbol;
   let stable = false;
-  let unsubscribe: (() => void) | undefined | typeof voidSymbol = voidSymbol;
-  const cleanSubscribers = new Set<Subscriber<T>>();
-  const dirtySubscribers = new Map<Subscriber<T>, T | typeof voidSymbol>();
+  let teardown: (() => void) | undefined | typeof voidSymbol = voidSymbol;
+  const cleanSubscribers = new Set<Consumer<T>>();
+  const dirtySubscribers = new Map<Consumer<T>, T | typeof voidSymbol>();
   let microtaskQueued = false;
 
   const set = (clientValue: T) => {
@@ -48,20 +48,20 @@ export const createAsyncVar = <T>(
 
   const err = (clientError: unknown) => {
     error = clientError;
-    unsubscribe = voidSymbol;
+    teardown = voidSymbol;
     maybeQueueMicrotask();
   };
 
   const dispose = () => {
     stable = true;
-    unsubscribe = voidSymbol;
+    teardown = voidSymbol;
     maybeQueueMicrotask();
   };
 
-  const subscribe = (subscriber: Subscriber<T> = {}) => {
+  const subscribe = (subscriber: Consumer<T> = {}) => {
     dirtySubscribers.set(subscriber, voidSymbol);
-    if (unsubscribe === voidSymbol) {
-      unsubscribe = undefined;
+    if (teardown === voidSymbol) {
+      teardown = undefined;
     }
     maybeQueueMicrotask();
 
@@ -72,8 +72,8 @@ export const createAsyncVar = <T>(
         cleanSubscribers.size === 0 &&
         dirtySubscribers.size === 0
       ) {
-        if (unsubscribe === undefined) {
-          unsubscribe = voidSymbol;
+        if (teardown === undefined) {
+          teardown = voidSymbol;
         }
         maybeQueueMicrotask();
       }
@@ -83,7 +83,7 @@ export const createAsyncVar = <T>(
   const runCallbacks = () => {
     try {
       callbackLoop: while (true) {
-        if (unsubscribe === undefined) {
+        if (teardown === undefined) {
           if (value !== voidSymbol) {
             for (const subscriber of cleanSubscribers) {
               dirtySubscribers.set(subscriber, value);
@@ -92,7 +92,7 @@ export const createAsyncVar = <T>(
             value = voidSymbol;
           }
           let disposed = false;
-          const clientUnsubscribe = callback({
+          const clientTeardown = produce({
             set: (value) => {
               if (disposed) {
                 throw getProducerDisposedError();
@@ -114,10 +114,10 @@ export const createAsyncVar = <T>(
               dispose();
             },
           });
-          unsubscribe = () => {
+          teardown = () => {
             disposed = true;
             // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-            clientUnsubscribe?.();
+            clientTeardown?.();
           };
         }
 
@@ -127,7 +127,7 @@ export const createAsyncVar = <T>(
         ] of dirtySubscribers.entries()) {
           dirtySubscribers.delete(subscriber);
           if (
-            unsubscribe === voidSymbol ||
+            teardown === voidSymbol ||
             (value === voidSymbol && subscriberValue !== voidSymbol)
           ) {
             if (subscriber.err) {
@@ -142,7 +142,7 @@ export const createAsyncVar = <T>(
             }
           }
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-          if (unsubscribe === undefined) {
+          if (teardown === undefined) {
             continue callbackLoop;
           }
         }
@@ -152,7 +152,7 @@ export const createAsyncVar = <T>(
             cleanSubscribers.delete(subscriber);
             subscriber.dispose?.();
           }
-        } else if (unsubscribe === voidSymbol) {
+        } else if (teardown === voidSymbol) {
           for (const subscriber of cleanSubscribers) {
             cleanSubscribers.delete(subscriber);
             if (subscriber.err) {
@@ -161,16 +161,16 @@ export const createAsyncVar = <T>(
               throw error;
             }
             // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-            if (unsubscribe === undefined) {
+            if (teardown === undefined) {
               continue callbackLoop;
             }
           }
         } else if (cleanSubscribers.size === 0) {
-          const unsubscribeSnapshot = unsubscribe;
-          unsubscribe = voidSymbol;
+          const unsubscribeSnapshot = teardown;
+          teardown = voidSymbol;
           unsubscribeSnapshot();
           // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-          if (unsubscribe === undefined) {
+          if (teardown === undefined) {
             continue callbackLoop;
           }
         }
