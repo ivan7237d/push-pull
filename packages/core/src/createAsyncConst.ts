@@ -10,11 +10,11 @@ export interface AsyncConst<T> extends AsyncVar<T> {
 }
 
 export const createAsyncConst = <T>(
-  callback: (subscriber: Required<Consumer<T>>) => (() => void) | void
+  produce: (publisher: Required<Consumer<T>>) => (() => void) | void
 ): AsyncConst<T> =>
   createAsyncVar(({ set, err, dispose }) => {
     let valueExists = false;
-    return callback({
+    return produce({
       set: (value) => {
         if (valueExists) {
           throw new Error(
