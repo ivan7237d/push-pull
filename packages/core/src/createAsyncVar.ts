@@ -5,6 +5,11 @@ import { voidSymbol } from "./utils";
  */
 const asyncSymbol = Symbol("asyncSymbol");
 
+/**
+ * A consumer can be of two kinds: a publisher (`Required<Consumer<T>>`) and a
+ * subscriber (`Consumer<T>`). A publisher is passed to `createAsyncVar`
+ * callback, a consumer is passed to an async var.
+ */
 export interface Consumer<T> {
   set?: (value: T) => void;
   err?: (error: unknown) => void;
@@ -24,8 +29,16 @@ const getProducerDisposedError = () =>
     "You cannot call `set`, `err` and `dispose` publisher functions (the handles passed by `createAsyncVar` to its callback) after you've called `err` or `dispose`, or after the teardown function has been called."
   );
 
-export const createAsyncVar = <T>(
+// interface ProducerContext {
+//   (callback: () => void): void;
+// }
+
+// let globalProducerContext: ProducerContext | undefined;
+
+export const createAsyncVar: <T>(
   produce: (publisher: Required<Consumer<T>>) => (() => void) | void
+) => AsyncVar<T> = <T>(
+  clientProduce: (publisher: Required<Consumer<T>>) => (() => void) | void
 ) => {
   let value: T | typeof voidSymbol = voidSymbol;
   let error: unknown = voidSymbol;
@@ -33,7 +46,47 @@ export const createAsyncVar = <T>(
   let teardown: (() => void) | undefined | typeof voidSymbol = voidSymbol;
   const cleanSubscribers = new Set<Consumer<T>>();
   const dirtySubscribers = new Map<Consumer<T>, T | typeof voidSymbol>();
-  let microtaskQueued = false;
+  let broadcasting = false;
+
+  const maybeBroadcast = () => {
+    if (!broadcasting) {
+      broadcasting = true;
+      try {
+        for (const [
+          subscriber,
+          subscriberValue,
+        ] of dirtySubscribers.entries()) {
+          dirtySubscribers.delete(subscriber);
+          if (error === voidSymbol) {
+            cleanSubscribers.add(subscriber);
+            if (value !== voidSymbol && subscriberValue !== value) {
+              subscriber.set?.(value);
+            }
+          } else {
+            // Here `value === voidSymbol`.
+            if (subscriberValue === voidSymbol && teardown !== voidSymbol) {
+              cleanSubscribers.add(subscriber);
+            } else {
+              if (subscriber.err) {
+                subscriber.err(error);
+              } else {
+                throw error;
+              }
+            }
+          }
+        }
+        error = voidSymbol;
+        if (stable) {
+          for (const subscriber of cleanSubscribers) {
+            cleanSubscribers.delete(subscriber);
+            subscriber.dispose?.();
+          }
+        }
+      } finally {
+        broadcasting = false;
+      }
+    }
+  };
 
   const set = (clientValue: T) => {
     if (clientValue !== value) {
@@ -42,160 +95,106 @@ export const createAsyncVar = <T>(
       }
       cleanSubscribers.clear();
       value = clientValue;
-      maybeQueueMicrotask();
+      error = voidSymbol;
+      maybeBroadcast();
     }
   };
 
   const err = (clientError: unknown) => {
+    for (const subscriber of cleanSubscribers) {
+      dirtySubscribers.set(subscriber, value);
+    }
+    cleanSubscribers.clear();
+    value = voidSymbol;
     error = clientError;
     teardown = voidSymbol;
-    maybeQueueMicrotask();
+    maybeBroadcast();
   };
 
   const dispose = () => {
     stable = true;
     teardown = voidSymbol;
-    maybeQueueMicrotask();
+    maybeBroadcast();
   };
 
-  const subscribe = (subscriber: Consumer<T> = {}) => {
-    dirtySubscribers.set(subscriber, voidSymbol);
-    if (teardown === voidSymbol) {
-      teardown = undefined;
-    }
-    maybeQueueMicrotask();
+  // const maybeTeardown = () => {
+  //   if (
+  //     !inProducerContext &&
+  //     cleanSubscribers.size === 0 &&
+  //     dirtySubscribers.size === 0 &&
+  //     teardown !== undefined &&
+  //     teardown !== voidSymbol
+  //   ) {
+  //     const teardownSnapshot = teardown;
+  //     teardown = voidSymbol;
+  //     teardownSnapshot();
+  //   }
+  // };
 
-    return () => {
-      if (
-        (cleanSubscribers.delete(subscriber) ||
-          dirtySubscribers.delete(subscriber)) &&
-        cleanSubscribers.size === 0 &&
-        dirtySubscribers.size === 0
-      ) {
-        if (teardown === undefined) {
-          teardown = voidSymbol;
+  const produce = () => {
+    let disposed = false;
+    teardown = undefined;
+    const clientTeardown = clientProduce({
+      set: (value) => {
+        if (disposed) {
+          throw getProducerDisposedError();
         }
-        maybeQueueMicrotask();
-      }
-    };
-  };
-
-  const runCallbacks = () => {
-    try {
-      callbackLoop: while (true) {
-        if (teardown === undefined) {
-          if (value !== voidSymbol) {
-            for (const subscriber of cleanSubscribers) {
-              dirtySubscribers.set(subscriber, value);
-            }
-            cleanSubscribers.clear();
-            value = voidSymbol;
-          }
-          let disposed = false;
-          const clientTeardown = produce({
-            set: (value) => {
-              if (disposed) {
-                throw getProducerDisposedError();
-              }
-              set(value);
-            },
-            err: (error) => {
-              if (disposed) {
-                throw getProducerDisposedError();
-              }
-              disposed = true;
-              err(error);
-            },
-            dispose: () => {
-              if (disposed) {
-                throw getProducerDisposedError();
-              }
-              disposed = true;
-              dispose();
-            },
-          });
-          teardown = () => {
-            disposed = true;
-            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-            clientTeardown?.();
-          };
+        set(value);
+      },
+      err: (error) => {
+        if (disposed) {
+          throw getProducerDisposedError();
         }
-
-        for (const [
-          subscriber,
-          subscriberValue,
-        ] of dirtySubscribers.entries()) {
-          dirtySubscribers.delete(subscriber);
-          if (
-            teardown === voidSymbol ||
-            (value === voidSymbol && subscriberValue !== voidSymbol)
-          ) {
-            if (subscriber.err) {
-              subscriber.err(error);
-            } else {
-              throw error;
-            }
-          } else {
-            cleanSubscribers.add(subscriber);
-            if (subscriberValue !== value && value !== voidSymbol) {
-              subscriber.set?.(value);
-            }
-          }
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-          if (teardown === undefined) {
-            continue callbackLoop;
-          }
+        disposed = true;
+        err(error);
+      },
+      dispose: () => {
+        if (disposed) {
+          throw getProducerDisposedError();
         }
-
-        if (stable) {
-          for (const subscriber of cleanSubscribers) {
-            cleanSubscribers.delete(subscriber);
-            subscriber.dispose?.();
-          }
-        } else if (teardown === voidSymbol) {
-          for (const subscriber of cleanSubscribers) {
-            cleanSubscribers.delete(subscriber);
-            if (subscriber.err) {
-              subscriber.err(error);
-            } else {
-              throw error;
-            }
-            // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-            if (teardown === undefined) {
-              continue callbackLoop;
-            }
-          }
-        } else if (cleanSubscribers.size === 0) {
-          const unsubscribeSnapshot = teardown;
-          teardown = voidSymbol;
-          unsubscribeSnapshot();
-          // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-          if (teardown === undefined) {
-            continue callbackLoop;
-          }
-        }
-        error = voidSymbol;
-        break callbackLoop;
-      }
-      microtaskQueued = false;
-    } finally {
-      // If an error was thrown, let it propagate, but continue calling
-      // remaining callbacks. Dev tools will be able to pause at the place the
-      // error was thrown when the user switches on "Pause on uncaught
-      // exceptions", yet one bad subscriber will not break other subscribers.
-      if (microtaskQueued) {
-        queueMicrotask(runCallbacks);
-      }
+        disposed = true;
+        dispose();
+      },
+    }) as (() => void) | undefined; // Cast void -> undefined.
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+    if (teardown === undefined) {
+      teardown = () => {
+        disposed = true;
+        clientTeardown?.();
+      };
     }
   };
 
-  const maybeQueueMicrotask = () => {
-    if (microtaskQueued) {
-      return;
-    }
-    microtaskQueued = true;
-    queueMicrotask(runCallbacks);
-  };
+  return Object.assign(
+    (subscriber: Consumer<T> = {}) => {
+      dirtySubscribers.set(subscriber, voidSymbol);
+      if (teardown === voidSymbol && !stable) {
+        produce();
+      }
+      maybeBroadcast();
 
-  return Object.assign(subscribe, { [asyncSymbol]: true as const });
+      return () => {
+        if (
+          !(
+            cleanSubscribers.delete(subscriber) ||
+            dirtySubscribers.delete(subscriber)
+          )
+        ) {
+          throw new Error(
+            "You cannot unsubscribe from an async variable if you have already unsubscribed, or if the subscriber has been `err`-ed or `dispose`-d."
+          );
+        }
+        if (
+          cleanSubscribers.size === 0 &&
+          dirtySubscribers.size === 0 &&
+          teardown !== voidSymbol
+        ) {
+          teardown!();
+        }
+      };
+    },
+    {
+      [asyncSymbol]: true as const,
+    }
+  );
 };
