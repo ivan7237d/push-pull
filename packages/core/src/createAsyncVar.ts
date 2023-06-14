@@ -160,6 +160,7 @@ export const createAsyncVar: <T>(
     if (teardown === undefined) {
       teardown = () => {
         disposed = true;
+        teardown = voidSymbol;
         clientTeardown?.();
       };
     }
