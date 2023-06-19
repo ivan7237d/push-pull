@@ -64,7 +64,10 @@ export const createAsyncVar: <T>(
             }
           } else {
             // Here `value === voidSymbol`.
-            if (subscriberValue === voidSymbol && teardown !== voidSymbol) {
+            if (
+              subscriberValue === voidSymbol &&
+              (teardown !== voidSymbol || stable)
+            ) {
               cleanSubscribers.add(subscriber);
             } else {
               if (subscriber.err) {
