@@ -35,15 +35,10 @@ export const map =
       let unsubscribeTo: (() => void) | undefined;
 
       const setFrom = (value: From) => {
-        unsubscribeTo?.();
-        let projected;
-        try {
-          projected = project(value);
-        } catch (error) {
+        const errTo = (error: unknown) => {
           unsubscribeFrom?.();
           err(error);
-          return;
-        }
+        };
 
         const disposeTo = () => {
           if (unsubscribeFrom) {
@@ -53,13 +48,18 @@ export const map =
           }
         };
 
+        unsubscribeTo?.();
+        let projected;
+        try {
+          projected = project(value);
+        } catch (error) {
+          errTo(error);
+          return;
+        }
         if (isAsync(projected)) {
           unsubscribeTo = projected({
             set,
-            err: (error) => {
-              unsubscribeFrom?.();
-              err(error);
-            },
+            err: errTo,
             dispose: disposeTo,
           });
         } else {
