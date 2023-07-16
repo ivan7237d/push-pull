@@ -3,12 +3,12 @@ import { voidSymbol } from "./utils";
 /**
  * Used as a key to nominally type async variables.
  */
-const asyncSymbol = Symbol("asyncSymbol");
+const asyncVarSymbol = Symbol("asyncVarSymbol");
 
 /**
  * A consumer can be of two kinds: a publisher (`Required<Consumer<T>>`) and a
  * subscriber (`Consumer<T>`). A publisher is passed to `createAsyncVar`
- * callback, a consumer is passed to an async var.
+ * callback, a subscriber is passed to an async var.
  */
 export interface Consumer<T> {
   set?: (value: T) => void;
@@ -18,11 +18,11 @@ export interface Consumer<T> {
 
 export interface AsyncVar<T> {
   (subscriber?: Consumer<T>): () => void;
-  [asyncSymbol]: true;
+  [asyncVarSymbol]: true;
 }
 
 export const isAsync = (arg: unknown): arg is AsyncVar<unknown> =>
-  typeof arg === "object" && arg !== null && asyncSymbol in arg;
+  typeof arg === "object" && arg !== null && asyncVarSymbol in arg;
 
 const getProducerDisposedError = () =>
   new Error(
@@ -198,7 +198,7 @@ export const createAsyncVar: <T>(
       };
     },
     {
-      [asyncSymbol]: true as const,
+      [asyncVarSymbol]: true as const,
     }
   );
 };
