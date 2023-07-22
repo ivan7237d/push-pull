@@ -5,13 +5,13 @@ import { AsyncVar, Consumer, createAsyncVar } from "./createAsyncVar";
  */
 declare const asyncConstSymbol: unique symbol;
 
-export interface AsyncConst<T> extends AsyncVar<T> {
+export interface AsyncConst<Value, Error> extends AsyncVar<Value, Error> {
   [asyncConstSymbol]: true;
 }
 
-export const createAsyncConst = <T>(
-  produce: (publisher: Required<Consumer<T>>) => (() => void) | void
-): AsyncConst<T> =>
+export const createAsyncConst = <Value, Error>(
+  produce: (publisher: Required<Consumer<Value, Error>>) => (() => void) | void
+): AsyncConst<Value, Error> =>
   createAsyncVar(({ set, err, dispose }) => {
     let valueExists = false;
     return produce({
@@ -27,4 +27,4 @@ export const createAsyncConst = <T>(
       err,
       dispose,
     });
-  }) as AsyncConst<T>;
+  }) as AsyncConst<Value, Error>;

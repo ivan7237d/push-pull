@@ -4,42 +4,46 @@ import { NormalizeNeverAsync } from "./normalizeNeverAsync";
 
 export const map =
   <
-    ToMaybeAsync,
-    FromMaybeAsync,
-    From extends FromMaybeAsync extends AsyncVar<infer From>
-      ? From
-      : FromMaybeAsync,
-    To extends ToMaybeAsync extends AsyncVar<infer To> ? To : ToMaybeAsync
+    MaybeAsyncFrom,
+    MaybeAsyncTo,
+    ErrorFrom,
+    ErrorTo,
+    ValueFrom extends MaybeAsyncFrom extends AsyncVar<
+      infer ValueFrom,
+      ErrorFrom
+    >
+      ? ValueFrom
+      : MaybeAsyncFrom,
+    ValueTo extends MaybeAsyncTo extends AsyncVar<infer ValueTo, ErrorTo>
+      ? ValueTo
+      : MaybeAsyncTo
   >(
-    project: (from: From) => ToMaybeAsync
+    project: (from: ValueFrom) => MaybeAsyncTo
   ) =>
   (
-    source: FromMaybeAsync
+    source: MaybeAsyncFrom
   ): NormalizeNeverAsync<
-    FromMaybeAsync extends AsyncConst<unknown>
-      ? ToMaybeAsync extends AsyncConst<unknown>
-        ? AsyncConst<To>
-        : ToMaybeAsync extends AsyncVar<unknown>
-        ? AsyncVar<To>
-        : AsyncConst<To>
-      : FromMaybeAsync extends AsyncVar<unknown>
-      ? AsyncVar<To>
-      : ToMaybeAsync extends AsyncConst<unknown>
-      ? AsyncConst<To>
-      : ToMaybeAsync extends AsyncVar<unknown>
-      ? AsyncVar<To>
-      : AsyncConst<To>
+    MaybeAsyncFrom extends AsyncConst<unknown, unknown>
+      ? MaybeAsyncTo extends AsyncConst<unknown, unknown>
+        ? AsyncConst<ValueTo, ErrorFrom | ErrorTo>
+        : MaybeAsyncTo extends AsyncVar<unknown, unknown>
+        ? AsyncVar<ValueTo, ErrorFrom | ErrorTo>
+        : AsyncConst<ValueTo, ErrorFrom>
+      : MaybeAsyncFrom extends AsyncVar<unknown, unknown>
+      ? MaybeAsyncTo extends AsyncVar<unknown, unknown>
+        ? AsyncVar<ValueTo, ErrorFrom | ErrorTo>
+        : AsyncVar<ValueTo, ErrorFrom>
+      : MaybeAsyncTo extends AsyncConst<unknown, unknown>
+      ? AsyncConst<ValueTo, ErrorTo>
+      : MaybeAsyncTo extends AsyncVar<unknown, unknown>
+      ? AsyncVar<ValueTo, ErrorTo>
+      : AsyncConst<ValueTo, never>
   > =>
     createAsyncVar(({ set, err, dispose }) => {
       let unsubscribeFrom: (() => void) | undefined;
       let unsubscribeTo: (() => void) | undefined;
 
-      const setFrom = (value: From) => {
-        const errTo = (error: unknown) => {
-          unsubscribeFrom?.();
-          err(error);
-        };
-
+      const setFrom = (value: ValueFrom) => {
         const disposeTo = () => {
           if (unsubscribeFrom) {
             unsubscribeTo = undefined;
@@ -49,17 +53,14 @@ export const map =
         };
 
         unsubscribeTo?.();
-        let projected;
-        try {
-          projected = project(value);
-        } catch (error) {
-          errTo(error);
-          return;
-        }
+        const projected = project(value);
         if (isAsync(projected)) {
           unsubscribeTo = projected({
             set,
-            err: errTo,
+            err: (error) => {
+              unsubscribeFrom?.();
+              err(error);
+            },
             dispose: disposeTo,
           });
         } else {
@@ -69,7 +70,7 @@ export const map =
       };
 
       if (isAsync(source)) {
-        unsubscribeFrom = (source as AsyncVar<From>)({
+        unsubscribeFrom = (source as AsyncVar<ValueFrom, ErrorFrom>)({
           set: setFrom,
           err: (error) => {
             unsubscribeTo?.();
@@ -84,7 +85,7 @@ export const map =
           },
         });
       } else {
-        setFrom(source as unknown as From);
+        setFrom(source as unknown as ValueFrom);
       }
 
       return () => {

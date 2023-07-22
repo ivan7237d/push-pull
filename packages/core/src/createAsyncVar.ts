@@ -1,4 +1,4 @@
-import { voidSymbol } from "./utils";
+import { idleSymbol, pendingSymbol, stableSymbol, voidSymbol } from "./utils";
 
 /**
  * Used as a key to nominally type async variables.
@@ -6,22 +6,22 @@ import { voidSymbol } from "./utils";
 const asyncVarSymbol = Symbol("asyncVarSymbol");
 
 /**
- * A consumer can be of two kinds: a publisher (`Required<Consumer<T>>`) and a
- * subscriber (`Consumer<T>`). A publisher is passed to `createAsyncVar`
- * callback, a subscriber is passed to an async var.
+ * A consumer can be of two kinds: a publisher (`Required<Consumer<Value,
+ * Error>>`) and a subscriber (`Consumer<Value, Error>`). A publisher is passed
+ * to `createAsyncVar` callback, a subscriber is passed to an async var.
  */
-export interface Consumer<T> {
-  set?: (value: T) => void;
-  err?: (error: unknown) => void;
+export interface Consumer<Value, Error> {
+  set?: (value: Value) => void;
+  err?: (error: Error) => void;
   dispose?: () => void;
 }
 
-export interface AsyncVar<T> {
-  (subscriber?: Consumer<T>): () => void;
+export interface AsyncVar<Value, Error> {
+  (subscriber?: Consumer<Value, Error>): () => void;
   [asyncVarSymbol]: true;
 }
 
-export const isAsync = (arg: unknown): arg is AsyncVar<unknown> =>
+export const isAsync = (arg: unknown): arg is AsyncVar<unknown, unknown> =>
   typeof arg === "object" && arg !== null && asyncVarSymbol in arg;
 
 const getProducerDisposedError = () =>
@@ -29,69 +29,118 @@ const getProducerDisposedError = () =>
     "You cannot call `set`, `err` and `dispose` publisher functions (the handles passed by `createAsyncVar` to its callback) after you've called `err` or `dispose`, or after the teardown function has been called."
   );
 
-// interface ProducerContext {
-//   (callback: () => void): void;
-// }
+let queue: Set<() => void> | undefined;
 
-// let globalProducerContext: ProducerContext | undefined;
+/**
+ * As a perf optimization, instead of taking an `args` array, we only handle 0
+ * or 1 arguments by taking a single `arg` that's passed to callback iff it's
+ * !== voidSymbol.
+ */
+const runClientCallback: {
+  (callback: () => void, arg: typeof voidSymbol): void;
+  <Arg>(callback: (arg: Arg) => void, arg: Arg): void;
+} = (callback: (arg?: unknown) => void, arg: unknown) => {
+  const outerQueue = queue;
+  queue = new Set();
+  try {
+    if (arg === voidSymbol) {
+      callback();
+    } else {
+      callback(arg);
+    }
+  } catch (error) {
+    queueMicrotask(() => {
+      throw error;
+    });
+  }
+  for (const task of queue) {
+    queue.delete(task);
+    task();
+  }
+  queue = outerQueue;
+};
 
-export const createAsyncVar: <T>(
-  produce: (publisher: Required<Consumer<T>>) => (() => void) | void
-) => AsyncVar<T> = <T>(
-  clientProduce: (publisher: Required<Consumer<T>>) => (() => void) | void
+export const createAsyncVar: <Value, Error>(
+  produce: (publisher: Required<Consumer<Value, Error>>) => (() => void) | void
+) => AsyncVar<Value, Error> = <Value, Error>(
+  clientProduce: (
+    publisher: Required<Consumer<Value, Error>>
+  ) => (() => void) | void
 ) => {
-  let value: T | typeof voidSymbol = voidSymbol;
-  let error: unknown = voidSymbol;
-  let stable = false;
-  let teardown: (() => void) | undefined | typeof voidSymbol = voidSymbol;
-  const cleanSubscribers = new Set<Consumer<T>>();
-  const dirtySubscribers = new Map<Consumer<T>, T | typeof voidSymbol>();
-  let broadcasting = false;
+  let value: Value | typeof voidSymbol = voidSymbol;
+  let error: Error | typeof voidSymbol = voidSymbol;
+  let teardown:
+    | (() => void)
+    | typeof idleSymbol
+    | typeof pendingSymbol
+    | typeof stableSymbol = idleSymbol;
+  const cleanSubscribers = new Set<Consumer<Value, Error>>();
+  const dirtySubscribers = new Map<
+    Consumer<Value, Error>,
+    Value | typeof voidSymbol
+  >();
+  let emitting = false;
 
-  const maybeBroadcast = () => {
-    if (!broadcasting) {
-      broadcasting = true;
-      try {
-        for (const [
-          subscriber,
-          subscriberValue,
-        ] of dirtySubscribers.entries()) {
-          dirtySubscribers.delete(subscriber);
-          if (error === voidSymbol) {
-            cleanSubscribers.add(subscriber);
-            if (value !== voidSymbol && subscriberValue !== value) {
-              subscriber.set?.(value);
-            }
+  const emit = () => {
+    emitting = true;
+    if (teardown === pendingSymbol) {
+      runClientCallback(produce, voidSymbol);
+    }
+    for (const [subscriber, subscriberValue] of dirtySubscribers.entries()) {
+      dirtySubscribers.delete(subscriber);
+      if (error === voidSymbol) {
+        cleanSubscribers.add(subscriber);
+        if (
+          value !== voidSymbol &&
+          subscriberValue !== value &&
+          subscriber.set
+        ) {
+          runClientCallback(subscriber.set, value);
+        }
+      } else {
+        // Here `value === voidSymbol`, `teardown === <idleSymbol or
+        // pendingSymbol>`, `emitting === false`.
+        if (subscriberValue === voidSymbol && teardown === pendingSymbol) {
+          cleanSubscribers.add(subscriber);
+        } else {
+          if (subscriber.err) {
+            runClientCallback(subscriber.err, error);
           } else {
-            // Here `value === voidSymbol`.
-            if (
-              subscriberValue === voidSymbol &&
-              (teardown !== voidSymbol || stable)
-            ) {
-              cleanSubscribers.add(subscriber);
-            } else {
-              if (subscriber.err) {
-                subscriber.err(error);
-              } else {
-                throw error;
-              }
-            }
+            queueMicrotask(() => {
+              throw error;
+            });
           }
         }
-        error = voidSymbol;
-        if (stable) {
-          for (const subscriber of cleanSubscribers) {
-            cleanSubscribers.delete(subscriber);
-            subscriber.dispose?.();
-          }
-        }
-      } finally {
-        broadcasting = false;
       }
+    }
+    error = voidSymbol;
+    emitting = false;
+    if (teardown === stableSymbol) {
+      for (const subscriber of cleanSubscribers) {
+        cleanSubscribers.delete(subscriber);
+        if (subscriber.dispose) {
+          runClientCallback(subscriber.dispose, voidSymbol);
+        }
+      }
+    }
+    if (
+      typeof teardown === "function" &&
+      cleanSubscribers.size === 0 &&
+      dirtySubscribers.size === 0
+    ) {
+      teardown();
     }
   };
 
-  const set = (clientValue: T) => {
+  const scheduleOrRunEmit = () => {
+    if (queue) {
+      queue.add(emit);
+    } else {
+      emit();
+    }
+  };
+
+  const set = (clientValue: Value) => {
     if (clientValue !== value) {
       for (const subscriber of cleanSubscribers) {
         dirtySubscribers.set(subscriber, value);
@@ -99,44 +148,31 @@ export const createAsyncVar: <T>(
       cleanSubscribers.clear();
       value = clientValue;
       error = voidSymbol;
-      maybeBroadcast();
+      if (!emitting) {
+        scheduleOrRunEmit();
+      }
     }
   };
 
-  const err = (clientError: unknown) => {
+  const err = (clientError: Error) => {
     for (const subscriber of cleanSubscribers) {
       dirtySubscribers.set(subscriber, value);
     }
     cleanSubscribers.clear();
     value = voidSymbol;
     error = clientError;
-    teardown = voidSymbol;
-    maybeBroadcast();
+    teardown = idleSymbol;
+    emitting = false;
+    scheduleOrRunEmit();
   };
 
   const dispose = () => {
-    stable = true;
-    teardown = voidSymbol;
-    maybeBroadcast();
+    teardown = stableSymbol;
+    scheduleOrRunEmit();
   };
-
-  // const maybeTeardown = () => {
-  //   if (
-  //     !inProducerContext &&
-  //     cleanSubscribers.size === 0 &&
-  //     dirtySubscribers.size === 0 &&
-  //     teardown !== undefined &&
-  //     teardown !== voidSymbol
-  //   ) {
-  //     const teardownSnapshot = teardown;
-  //     teardown = voidSymbol;
-  //     teardownSnapshot();
-  //   }
-  // };
 
   const produce = () => {
     let disposed = false;
-    teardown = undefined;
     const clientTeardown = clientProduce({
       set: (value) => {
         if (disposed) {
@@ -158,24 +194,22 @@ export const createAsyncVar: <T>(
         disposed = true;
         dispose();
       },
-    }) as (() => void) | undefined; // Cast void -> undefined.
-    // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
-    if (teardown === undefined) {
-      teardown = () => {
-        disposed = true;
-        teardown = voidSymbol;
-        clientTeardown?.();
-      };
-    }
+    });
+    teardown = () => {
+      disposed = true;
+      teardown = idleSymbol;
+      if (clientTeardown) {
+        runClientCallback(clientTeardown, voidSymbol);
+      }
+    };
   };
 
   return Object.assign(
-    (subscriber: Consumer<T> = {}) => {
+    (subscriber: Consumer<Value, Error> = {}) => {
       dirtySubscribers.set(subscriber, voidSymbol);
-      if (teardown === voidSymbol && !stable) {
-        produce();
+      if (!emitting) {
+        scheduleOrRunEmit();
       }
-      maybeBroadcast();
 
       return () => {
         if (
@@ -188,12 +222,8 @@ export const createAsyncVar: <T>(
             "You cannot unsubscribe from an async variable if you have already unsubscribed, or if the subscriber has been `err`-ed or `dispose`-d."
           );
         }
-        if (
-          cleanSubscribers.size === 0 &&
-          dirtySubscribers.size === 0 &&
-          teardown !== voidSymbol
-        ) {
-          teardown!();
+        if (!emitting) {
+          scheduleOrRunEmit();
         }
       };
     },
