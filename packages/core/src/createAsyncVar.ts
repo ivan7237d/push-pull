@@ -1,4 +1,7 @@
-import { idleSymbol, pendingSymbol, stableSymbol, voidSymbol } from "./utils";
+const voidSymbol = Symbol("voidSymbol");
+const idleSymbol = Symbol("idleSymbol");
+const pendingSymbol = Symbol("pendingSymbol");
+const stableSymbol = Symbol("stableSymbol");
 
 /**
  * Used as a key to nominally type async variables.
