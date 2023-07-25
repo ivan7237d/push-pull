@@ -210,6 +210,9 @@ export const createAsyncVar: <Value, Error>(
   return Object.assign(
     (subscriber: Consumer<Value, Error> = {}) => {
       dirtySubscribers.set(subscriber, voidSymbol);
+      if (teardown === idleSymbol) {
+        teardown = pendingSymbol;
+      }
       if (!emitting) {
         scheduleOrRunEmit();
       }
