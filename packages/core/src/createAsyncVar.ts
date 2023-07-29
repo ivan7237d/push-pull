@@ -8,19 +8,28 @@ const stableSymbol = Symbol("stableSymbol");
  */
 const asyncVarSymbol = Symbol("asyncVarSymbol");
 
-/**
- * A consumer can be of two kinds: a publisher (`Required<Consumer<Value,
- * Error>>`) and a subscriber (`Consumer<Value, Error>`). A publisher is passed
- * to `createAsyncVar` callback, a subscriber is passed to an async var.
- */
-export interface Consumer<Value, Error> {
+export interface Publisher<Value, Error> {
+  set: (value: Value) => void;
+  err: (error: Error) => void;
+  dispose: () => void;
+}
+
+export type Subscriber<Value, Error> = {
   set?: (value: Value) => void;
   err?: (error: Error) => void;
   dispose?: () => void;
-}
+} & ([Error] extends [never] // About square brackets: https://www.typescriptlang.org/docs/handbook/2/conditional-types.html#distributive-conditional-types
+  ? unknown
+  : {
+      err: (error: Error) => void;
+    });
 
 export interface AsyncVar<Value, Error> {
-  (subscriber?: Consumer<Value, Error>): () => void;
+  (
+    ...args: [Error] extends [never] // About square brackets: https://www.typescriptlang.org/docs/handbook/2/conditional-types.html#distributive-conditional-types
+      ? [subscriber?: Subscriber<Value, Error>] | []
+      : [subscriber: Subscriber<Value, Error>]
+  ): () => void;
   [asyncVarSymbol]: true;
 }
 
@@ -64,11 +73,9 @@ const runClientCallback: {
 };
 
 export const createAsyncVar: <Value, Error>(
-  produce: (publisher: Required<Consumer<Value, Error>>) => (() => void) | void
+  produce: (publisher: Publisher<Value, Error>) => (() => void) | void
 ) => AsyncVar<Value, Error> = <Value, Error>(
-  clientProduce: (
-    publisher: Required<Consumer<Value, Error>>
-  ) => (() => void) | void
+  clientProduce: (publisher: Publisher<Value, Error>) => (() => void) | void
 ) => {
   let value: Value | typeof voidSymbol = voidSymbol;
   let error: Error | typeof voidSymbol = voidSymbol;
@@ -77,9 +84,9 @@ export const createAsyncVar: <Value, Error>(
     | typeof idleSymbol
     | typeof pendingSymbol
     | typeof stableSymbol = idleSymbol;
-  const cleanSubscribers = new Set<Consumer<Value, Error>>();
+  const cleanSubscribers = new Set<Subscriber<Value, Error>>();
   const dirtySubscribers = new Map<
-    Consumer<Value, Error>,
+    Subscriber<Value, Error>,
     Value | typeof voidSymbol
   >();
   let emitting = false;
@@ -208,7 +215,7 @@ export const createAsyncVar: <Value, Error>(
   };
 
   return Object.assign(
-    (subscriber: Consumer<Value, Error> = {}) => {
+    (subscriber: Subscriber<Value, Error> = {} as Subscriber<Value, Error>) => {
       dirtySubscribers.set(subscriber, voidSymbol);
       if (teardown === idleSymbol) {
         teardown = pendingSymbol;
@@ -236,5 +243,5 @@ export const createAsyncVar: <Value, Error>(
     {
       [asyncVarSymbol]: true as const,
     }
-  );
+  ) as AsyncVar<Value, Error>;
 };

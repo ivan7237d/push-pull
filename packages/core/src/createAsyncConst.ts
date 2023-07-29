@@ -1,4 +1,4 @@
-import { AsyncVar, Consumer, createAsyncVar } from "./createAsyncVar";
+import { AsyncVar, createAsyncVar, Subscriber } from "./createAsyncVar";
 
 /**
  * Used as a key to nominally type async constants.
@@ -10,7 +10,7 @@ export interface AsyncConst<Value, Error> extends AsyncVar<Value, Error> {
 }
 
 export const createAsyncConst = <Value, Error>(
-  produce: (publisher: Required<Consumer<Value, Error>>) => (() => void) | void
+  produce: (publisher: Subscriber<Value, Error>) => (() => void) | void
 ): AsyncConst<Value, Error> =>
   createAsyncVar(({ set, err, dispose }) => {
     let valueExists = false;
