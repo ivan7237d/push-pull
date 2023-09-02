@@ -1,6 +1,6 @@
 /**
  * This module implements synchronous reactivity. You give it a bunch of `() =>
- * void` functions, we'll call them thunks, that have these three properties:
+ * void` functions, we'll call them thunks, that have these properties:
  *
  * - They can have side effects, but should provide cleanup logic that fully
  *   reverses them.
@@ -11,6 +11,8 @@
  *
  * - They stay idempotent until either we get an external notification or a
  *   parent thunk is run.
+ *
+ * - Dependencies are non-cyclical.
  *
  * The job of this module is to run all these thunks, and do it efficiently -
  * here's what we mean by that:
