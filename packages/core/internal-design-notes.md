@@ -6,6 +6,8 @@ Motivation behind choices made when building this library. This motivation is so
 
 Signals have initial value, so it's possible to immediately run a derived computation or an effect to determine dependencies. Asyncs do not.
 
+Imagine you have an async const `nameFormatAsync` with value `"short" | "long"`, and you also have async consts `firstNameAsync` and `lastNameAsync`, all of them fire with some delay, and you need to compute `nameFormat === "short" ? firstName : firstName + " " + lastName`. You could first wait for `nameFormat`, and then if it fires `"short"`, you won't need to subscribe to `"lastName"`, or to save time you could subscribe to all three async consts from the start in case you do need the `"lastName"`. There is a tradeoff here between resource usage and speed, and the client is the one to make this choice, that's why we have manual subscriptions.
+
 ## Why can't we have prevention of redundant computations like it works for signals?
 
 As an example, imagine there are async variables A, B and C, and changes synchronously propagate like this: A -> [B, C]; C -> [B]. A emits a new value, we compute the value of B and notify its listeners, then we compute the value of C and process its listeners, but B is one of those listeners, so B will end up with a new value and we would have to notify its listeners the second time. Ideally, we would figure out that we should process C's listeners before B's, and then B will only emit once.
