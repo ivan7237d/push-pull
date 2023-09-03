@@ -26,8 +26,8 @@
  *   until it does happen. Also, efficiency means we have to solve the diamond
  *   problem (if you're not familiar with it, you can read up on it
  *   [here](https://dev.to/modderme123/super-charging-fine-grained-reactive-performance-47ph)
- *   for example): if a thunk is run while we're in an intermediate state, we'll
- *   have to immediately run the cleanup logic (reversing all the side effects
- *   and thus making the intermediate run useless) and then run it again in the
- *   final state.
+ *   for example): if a thunk were run while we're in an intermediate state,
+ *   we'd have to immediately run the cleanup logic (reversing all the side
+ *   effects and thus making the intermediate run useless) and then run it again
+ *   in the final state.
  */
