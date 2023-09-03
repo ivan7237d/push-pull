@@ -2,32 +2,25 @@
  * This module implements synchronous reactivity. You give it a bunch of `() =>
  * void` functions, we'll call them thunks, that have these properties:
  *
- * - They can have side effects, but should provide cleanup logic that fully
- *   reverses them.
+ * - When you run one of them, it has a way to indicate whether it has produced
+ *   any side effects.
  *
- * - When you run one of them, it has a way to indicate which other thunks are
- *   its "direct dependencies". A "direct dependency" aka a "parent" is just a
- *   concept that we use for the purposes of the next property:
+ * - A thunk also has a way to indicate which other thunks are its "direct
+ *   dependencies". A "direct dependency" aka a "parent" is just a concept that
+ *   we use for the purposes of the next property:
  *
- * - They stay idempotent until either we get an external notification or a
- *   parent thunk is run.
+ * - Thunks stay idempotent until either we get an external notification or a
+ *   parent thunk is run and produces side effects.
  *
  * - Dependencies are non-cyclical.
  *
- * The job of this module is to run all these thunks, and do it efficiently -
- * here's what we mean by that:
+ * The job of this module is to react to external notifications by running
+ * thunks in such a way that:
  *
- * - "run all these thunks" means this module runs everything that you throw at
- *   it, all the time - the only reason that doesn't imply forever eating all of
- *   your processor is the second part:
+ * - Your program ends up in a "stable" state, meaning that after we're done,
+ *   running any of the thunks would not produce any side effects.
  *
- * - "do it efficiently" means that we do not run thunks uselessly. Since thunks
- *   stay idempotent until something happens, it is sufficient to run it once
- *   until it does happen. Also, efficiency means we have to solve the diamond
- *   problem (if you're not familiar with it, you can read up on it
- *   [here](https://dev.to/modderme123/super-charging-fine-grained-reactive-performance-47ph)
- *   for example): if a thunk were run while we're in an intermediate state,
- *   we'd have to immediately run the cleanup logic (reversing all the side
- *   effects and thus making the intermediate run useless) and then run it again
- *   in the final state.
+ * - Each thunk is run at most once, so we solve the diamond problem (if you're
+ *   not familiar with it, you can read up on it
+ *   [here](https://dev.to/modderme123/super-charging-fine-grained-reactive-performance-47ph).
  */
