@@ -20,7 +20,8 @@
  * - Your program ends up in a "stable" state, meaning that after we're done,
  *   running any of the thunks would not produce any side effects.
  *
- * - Each thunk is run at most once, so we solve the diamond problem (if you're
- *   not familiar with it, you can read up on it
- *   [here](https://dev.to/modderme123/super-charging-fine-grained-reactive-performance-47ph).
+ * - Each thunk is run at most once.
+ *
+ * We solve the diamond problem using [three-colors
+ * algorithm](https://dev.to/modderme123/super-charging-fine-grained-reactive-performance-47ph).
  */
