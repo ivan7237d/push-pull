@@ -1,24 +1,30 @@
 /**
- * This module implements synchronous reactivity. You give it a bunch of `() =>
- * void` functions, we'll call them reactions, that have these properties:
+ * This module implements synchronous reactivity. You give it a bunch of
+ * "reactions": impure `() => boolean` functions whose returned value indicates
+ * whether the function has produced any side effects. We'll say that a reaction
+ * is in a "clean" state when re-running it doesn't produce any side effects.
+ * This notion is closely related to idempotence, but there are two differences:
  *
- * - When you run one of them, it has a way to indicate whether it has produced
- *   any side effects.
+ * - To be clean, an idempotent function has to be run at least once.
  *
- * - A reaction also has a way to indicate which other reactions are its "direct
- *   dependencies". A "direct dependency" aka a "parent" is just a concept that
- *   we use for the purposes of the next property:
+ * - Idempotence describes a function, whereas cleanness describes a state, so
+ *   a function can be clean now and not so later.
  *
- * - Reactions stay idempotent until either we get an external notification or a
- *   parent reaction is run and produces side effects.
+ * Inside a reaction, you can call `createDependency(<another reaction>)`.
+ * Immediately after this call, the other reaction is guaranteed to be clean.
+ *
+ * Reactions that you provide must satisfy the following contract:
+ *
+ * - A reaction will stay clean as long as its dependencies are clean, or until
+ *   `push(<reaction>)` is called on it. `push` is just a short way to say "this
+ *   reaction may no longer be clean even if its dependencies are still clean".
  *
  * - Dependencies are non-cyclical.
  *
- * The job of this module is to react to external notifications by running
- * reactions in such a way that:
+ * The job of this module is to react to `push` calls by running reactions in
+ * such a way that:
  *
- * - Each reaction ends up in a "clean" state, meaning that running it would not
- *   produce any side effects.
+ * - Each reaction ends up in a clean state.
  *
  * - Each reaction is run at most once.
  *
