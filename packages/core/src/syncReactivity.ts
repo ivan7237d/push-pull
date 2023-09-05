@@ -1,14 +1,16 @@
 /**
- * This module implements synchronous reactivity. You give it a bunch of
- * "reactions": impure `() => boolean` functions whose returned value indicates
- * whether the function has produced any side effects. We'll say that a reaction
- * is in a "clean" state when re-running it doesn't produce any side effects.
- * This notion is closely related to idempotence, but there are two differences:
+ * This module implements a generic version of the [three-colors
+ * algorithm](https://dev.to/modderme123/super-charging-fine-grained-reactive-performance-47ph).
+ * You give it a bunch of "reactions": impure `() => boolean` functions whose
+ * returned value indicates whether the function has produced any side effects.
+ * We'll say that a reaction is in a "clean" state when re-running it doesn't
+ * produce any side effects. This notion is closely related to idempotence, but
+ * there are two differences:
  *
  * - To be clean, an idempotent function has to be run at least once.
  *
- * - Idempotence describes a function, whereas cleanness describes a state, so
- *   a function can be clean now and not so later.
+ * - Idempotence describes a function, whereas cleanness describes a state, so a
+ *   function can be clean now and not so later.
  *
  * Inside a reaction, you can call `createDependency(<another reaction>)`.
  * Immediately after this call, the other reaction is guaranteed to be clean.
@@ -28,6 +30,4 @@
  *
  * - Each reaction is run at most once.
  *
- * We solve the diamond problem using [three-colors
- * algorithm](https://dev.to/modderme123/super-charging-fine-grained-reactive-performance-47ph).
  */
