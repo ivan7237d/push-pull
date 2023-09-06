@@ -1,10 +1,29 @@
 /**
- * This module implements a the [three-colors
+ * This module implements reactivity using the [three-colors
  * algorithm](https://dev.to/modderme123/super-charging-fine-grained-reactive-performance-47ph).
- * You give it a bunch of "reactions", `() => boolean` functions whose returned
- * value indicates whether the function has produced any side effects. When the
- * state is such that running a reaction doesn't produce side effects, we'll say
- * that the reaction is "stable".
+ *
+ * Let's start from afar by asking what is "declarative" programming? One way to
+ * define it is to say that declarative programming = any kind of *guarantees*
+ * provided to the developer that makes that developer's job easier - for
+ * example, you can be guaranteed that some variable is local to a module and so
+ * cannot be modified from outside it.
+ *
+ * Now as to "reactive" programming. We're going to define it as a specific kind
+ * of guarantee (and so a specific kind of declarative programming) which is
+ * that a subroutine (an impure function that doesn't return a value) is
+ * guaranteed to not produce side effects if run again.
+ *
+ * For example, a subroutine could read a value of one signal, multiply it by
+ * two, and use the result to set the value of another signal. The guarantee we
+ * just described has a corollary that the values of two signals will be
+ * consistent. Another example is an effect such as updating DOM in response to
+ * a signal: since re-running DOM update does not produce side effect, this
+ * means that DOM is up-to-date.
+ *
+ * The API of this module is as follows. You give it a bunch of "reactions", `()
+ * => boolean` functions whose returned value indicates whether the function has
+ * produced any side effects. When the state is such that running a reaction
+ * doesn't produce side effects, we'll say that the reaction is "stable".
  *
  * Inside a reaction, you can call `createDependency(<another reaction>)`.
  * Immediately after this call, the other reaction is guaranteed to be stable.
@@ -27,11 +46,11 @@ interface Reaction {
 }
 
 /**
- * Has a key for each reaction, even if the value is an empty set.
+ * Has a key for each reaction in the graph, even if the value is an empty set.
  */
 const parentToChildren = new Map<Reaction, Set<Reaction>>();
 /**
- * Has a key for each reaction, even if the value is an empty set.
+ * Has a key for each reaction in the graph, even if the value is an empty set.
  */
 const childToParents = new Map<Reaction, Set<Reaction>>();
 /**
@@ -39,26 +58,52 @@ const childToParents = new Map<Reaction, Set<Reaction>>();
  */
 const dirtyReactions = new Set<Reaction>();
 /**
- * TODO
+ * Reactions that may need to be re-run.
  */
-const checkReactions = new Set<Reaction>();
+const pendingReactions = new Set<Reaction>();
+/**
+ * Innermost reaction that's currently being run.
+ */
+let currentReaction: Reaction | undefined;
+
+/**
+ * Can only be run inside a reaction. The dependency must be present in the
+ * graph.
+ */
+export const createDependency = (reaction: Reaction) => {};
 
 const runReaction = (reaction: Reaction) => {
-  // TODO
+  // Remove dependencies.
+  const parents = childToParents.get(reaction)!;
+  for (const parent of parents) {
+    parentToChildren.get(parent)!.delete(reaction);
+  }
+  parents.clear();
+
+  const previousReaction = currentReaction;
+  currentReaction = reaction;
+  if (reaction()) {
+    for (const child of parentToChildren.get(reaction)!) {
+      dirtyReactions.add(child);
+    }
+  }
+  dirtyReactions.delete(reaction);
+
+  currentReaction = previousReaction;
 };
 
 /**
  * Run reaction if dirty or if a parent is dirty.
  */
 const runReactionIfNecessary = (reaction: Reaction) => {
-  if (checkReactions.has(reaction)) {
+  if (pendingReactions.has(reaction)) {
     for (const parent of childToParents.get(reaction)!) {
       runReactionIfNecessary(parent);
       if (dirtyReactions.has(reaction)) {
         break;
       }
     }
-    checkReactions.delete(reaction);
+    pendingReactions.delete(reaction);
   }
 
   if (dirtyReactions.has(reaction)) {
