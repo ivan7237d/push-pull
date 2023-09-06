@@ -29,5 +29,4 @@
  * - Each reaction ends up in a clean state.
  *
  * - Each reaction is run at most once.
- *
  */
