@@ -15,10 +15,16 @@
  *
  * For example, a subroutine could read a value of one signal, multiply it by
  * two, and use the result to set the value of another signal. The guarantee we
- * just described has a corollary that the values of two signals will be
- * consistent. Another example is an effect such as updating DOM in response to
- * a signal: since re-running DOM update does not produce side effect, this
+ * just described has a corollary that values of the two signals will be
+ * consistent with each other: re-running the subroutine will not produce side
+ * effects only if the value of the second signal is already 2x the value of the
+ * first signal. Another example is an effect such as updating DOM in response
+ * to a signal: since re-running DOM update does not produce side effects, this
  * means that DOM is up-to-date.
+ *
+ * It's funny how in functional programming, the guarantee is that a *function*
+ * doesn't have side effects (ever), and in reactive programming, that a
+ * *subroutine* doesn't have side effects (at a given point in time).
  *
  * The API of this module is as follows. You give it a bunch of "reactions", `()
  * => boolean` functions whose returned value indicates whether the function has
