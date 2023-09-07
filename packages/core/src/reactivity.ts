@@ -2,11 +2,12 @@
  * This module implements reactivity using the [three-colors
  * algorithm](https://dev.to/modderme123/super-charging-fine-grained-reactive-performance-47ph).
  *
- * Let's start from afar by asking what is "declarative" programming? One way to
- * define it is to say that declarative programming = any kind of *guarantees*
- * provided to the developer that makes that developer's job easier - for
- * example, you can be guaranteed that some variable is local to a module and so
- * cannot be modified from outside it.
+ * Let's start from afar by asking what is "declarative" programming?
+ * Declarative programming is about any kind of *guarantees* provided to the
+ * developer that make that developer's job easier - for example, you can be
+ * guaranteed that some variable is local to a module and so cannot be modified
+ * from outside it. It's not like code is either declarative or non-declarative,
+ * but the more guarantees there are, the more it's declarative.
  *
  * Now as to "reactive" programming. We're going to define it as a specific kind
  * of guarantee (and so a specific kind of declarative programming) which is
@@ -18,9 +19,10 @@
  * just described has a corollary that values of the two signals will be
  * consistent with each other: re-running the subroutine will not produce side
  * effects only if the value of the second signal is already 2x the value of the
- * first signal. Another example is an effect such as updating DOM in response
- * to a signal: since re-running DOM update does not produce side effects, this
- * means that DOM is up-to-date.
+ * first signal. Another example, this time not involving a relationship between
+ * values, is an effect such as updating DOM in response to a signal: since
+ * re-running DOM update does not produce side effects, this means that DOM is
+ * up-to-date.
  *
  * It's funny how in functional programming, the guarantee is that a *function*
  * doesn't have side effects (ever), and in reactive programming, that a
@@ -59,16 +61,17 @@ const parentToChildren = new Map<Reaction, Set<Reaction>>();
  * Has a key for each reaction in the graph, even if the value is an empty set.
  */
 const childToParents = new Map<Reaction, Set<Reaction>>();
+
 /**
- * Reactions that need to be re-run.
+ * Contains all the reactions that may need to be re-run. `true` values indicate
+ * that a reaction definitely needs to be re-run (which does not mean that we
+ * should run it eagerly because it can be removed from the graph as we're
+ * running other reactions).
  */
-const dirtyReactions = new Set<Reaction>();
+const queue = new Map<Reaction, boolean>();
+
 /**
- * Reactions that may need to be re-run.
- */
-const pendingReactions = new Set<Reaction>();
-/**
- * Innermost reaction that's currently being run.
+ * Of reactions that are currently being run, the innermost in the stack.
  */
 let currentReaction: Reaction | undefined;
 
@@ -86,16 +89,16 @@ const runReaction = (reaction: Reaction) => {
   }
   parents.clear();
 
-  const previousReaction = currentReaction;
+  const outerReaction = currentReaction;
   currentReaction = reaction;
   if (reaction()) {
     for (const child of parentToChildren.get(reaction)!) {
       dirtyReactions.add(child);
     }
   }
-  dirtyReactions.delete(reaction);
+  queue.delete(reaction);
 
-  currentReaction = previousReaction;
+  currentReaction = outerReaction;
 };
 
 /**
