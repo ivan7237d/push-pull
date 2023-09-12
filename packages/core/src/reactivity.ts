@@ -49,94 +49,130 @@
  * that all of them end up stable.
  */
 
-interface Reaction {
+const parentsSymbol = Symbol("parents");
+const childrenSymbol = Symbol("children");
+const statusSymbol = Symbol("status");
+const checkSymbol = Symbol("check");
+const cleanSymbol = Symbol("clean");
+const teardownsSymbol = Symbol("teardowns");
+const isRootSymbol = Symbol("isRoot");
+const isReactionSymbol = Symbol("isReaction");
+
+interface Node {
+  [parentsSymbol]?: Node[];
+  [childrenSymbol]?: Node[];
+  /**
+   * By having a missing statusSymbol represent dirty status, we make sure that
+   * pushing some random object not otherwise involved in reactivity is a no-op.
+   */
+  [statusSymbol]?: typeof checkSymbol | typeof cleanSymbol;
+  [teardownsSymbol]?: (() => void) | (() => void)[];
+  /**
+   * A root is a node that shouldn't be removed from the graph even if it has no
+   * children.
+   */
+  [isRootSymbol]?: true;
+  /**
+   * When `true`, the node is a reaction function with signature `() =>
+   * boolean`.
+   */
+  [isReactionSymbol]?: true;
+}
+
+interface Reaction extends Node {
   (): boolean;
 }
 
-/**
- * Has a key for each reaction in the graph, even if the value is an empty set.
- */
-const parentToChildren = new Map<Reaction, Set<Reaction>>();
-/**
- * Has a key for each reaction in the graph, even if the value is an empty set.
- */
-const childToParents = new Map<Reaction, Set<Reaction>>();
+let currentNode: Node | undefined;
 
 /**
- * Contains all the reactions that may need to be re-run. `true` values indicate
- * that a reaction definitely needs to be re-run (which does not mean that we
- * should run it eagerly because it can be removed from the graph as we're
- * running other reactions).
+ * Root nodes that are not clean.
  */
-const queue = new Map<Reaction, boolean>();
+let queue = [];
 
-/**
- * Of reactions that are currently being run, the innermost in the stack.
- */
-let currentReaction: Reaction | undefined;
-
-/**
- * Can only be run inside a reaction. The dependency must be present in the
- * graph.
- */
-export const createDependency = (reaction: Reaction) => {};
-
-const runReaction = (reaction: Reaction) => {
-  // Remove dependencies.
-  const parents = childToParents.get(reaction)!;
-  for (const parent of parents) {
-    parentToChildren.get(parent)!.delete(reaction);
-  }
-  parents.clear();
-
-  const outerReaction = currentReaction;
-  currentReaction = reaction;
-  if (reaction()) {
-    for (const child of parentToChildren.get(reaction)!) {
-      dirtyReactions.add(child);
-    }
-  }
-  queue.delete(reaction);
-
-  currentReaction = outerReaction;
-};
-
-/**
- * Run reaction if dirty or if a parent is dirty.
- */
-const runReactionIfNecessary = (reaction: Reaction) => {
-  if (pendingReactions.has(reaction)) {
-    for (const parent of childToParents.get(reaction)!) {
-      runReactionIfNecessary(parent);
-      if (dirtyReactions.has(reaction)) {
-        break;
+const pushDescendants = (node: Node) => {
+  if (node[childrenSymbol]) {
+    let child: Node;
+    for (let i = 0; i < node[childrenSymbol].length; i++) {
+      child = node[childrenSymbol][i]!;
+      if (child[statusSymbol] === cleanSymbol) {
+        child[statusSymbol] = checkSymbol;
+        pushDescendants(child);
       }
     }
-    pendingReactions.delete(reaction);
-  }
-
-  if (dirtyReactions.has(reaction)) {
-    runReaction(reaction);
-    dirtyReactions.delete(reaction);
   }
 };
 
-export const addReaction = (reaction: Reaction) => {
-  // TODO
-};
-
-/**
- * Should only be called when the reaction has no children.
- */
-export const removeReaction = (reaction: Reaction) => {
-  parentToChildren.delete(reaction);
-  for (const parent of childToParents.get(reaction)!) {
-    parentToChildren.get(parent)!.delete(reaction);
+export const push = (node: Node) => {
+  if (statusSymbol in node) {
+    if (node[statusSymbol] === cleanSymbol) {
+      queue.push(node);
+    }
+    delete node[statusSymbol];
+    pushDescendants(node);
   }
-  childToParents.delete(reaction);
 };
 
-export const push = (reaction: Reaction) => {
-  dirtyReactions.add(reaction);
-  // TODO
-};
+export const createDependency = (node: Node) => {};
+
+export const createRoot = (callback: () => {}) => {};
+
+// const runReaction = (reaction: Reaction) => {
+//   // Remove dependencies.
+//   const parents = childToParents.get(reaction)!;
+//   for (const parent of parents) {
+//     parentToChildren.get(parent)!.delete(reaction);
+//   }
+//   parents.clear();
+
+//   const outerReaction = currentReaction;
+//   currentReaction = reaction;
+//   if (reaction()) {
+//     for (const child of parentToChildren.get(reaction)!) {
+//       dirtyReactions.add(child);
+//     }
+//   }
+//   queue.delete(reaction);
+
+//   currentReaction = outerReaction;
+// };
+
+// /**
+//  * Run reaction if dirty or if a parent is dirty.
+//  */
+// const runReactionIfNecessary = (reaction: Reaction) => {
+//   if (pendingReactions.has(reaction)) {
+//     for (const parent of childToParents.get(reaction)!) {
+//       runReactionIfNecessary(parent);
+//       if (dirtyReactions.has(reaction)) {
+//         break;
+//       }
+//     }
+//     pendingReactions.delete(reaction);
+//   }
+
+//   if (dirtyReactions.has(reaction)) {
+//     runReaction(reaction);
+//     dirtyReactions.delete(reaction);
+//   }
+// };
+
+// export const addReaction = (reaction: Reaction) => {
+//   // TODO
+// };
+
+// /**
+//  * Should only be called when the reaction has no children.
+//  */
+// export const removeReaction = (reaction: Reaction) => {
+//   parentToChildren.delete(reaction);
+//   for (const parent of childToParents.get(reaction)!) {
+//     parentToChildren.get(parent)!.delete(reaction);
+//   }
+//   childToParents.delete(reaction);
+// };
+
+// export const push = (reaction: Reaction) => {
+//   dirtyReactions.add(reaction);
+//   // TODO
+// };
