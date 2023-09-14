@@ -2,6 +2,8 @@
  * This module implements reactivity using the [three-colors
  * algorithm](https://dev.to/modderme123/super-charging-fine-grained-reactive-performance-47ph).
  *
+ * We want to use as broad a definition of reactivity as possible.
+ *
  * Let's start from afar by asking what is "declarative" programming?
  * Declarative programming is about any kind of *guarantees* provided to the
  * developer that make that developer's job easier - for example, you can be
@@ -55,65 +57,55 @@ const statusSymbol = Symbol("status");
 const checkSymbol = Symbol("check");
 const cleanSymbol = Symbol("clean");
 const teardownsSymbol = Symbol("teardowns");
-const isRootSymbol = Symbol("isRoot");
-const isReactionSymbol = Symbol("isReaction");
 
-interface Node {
-  [parentsSymbol]?: Node[];
-  [childrenSymbol]?: Node[];
-  /**
-   * By having a missing statusSymbol represent dirty status, we make sure that
-   * pushing some random object not otherwise involved in reactivity is a no-op.
-   */
-  [statusSymbol]?: typeof checkSymbol | typeof cleanSymbol;
+interface Subject {
+  [parentsSymbol]?: (Owner | Reaction)[];
+}
+
+interface Owner {
+  [childrenSymbol]?: (Subject | Reaction)[];
   [teardownsSymbol]?: (() => void) | (() => void)[];
-  /**
-   * A root is a node that shouldn't be removed from the graph even if it has no
-   * children.
-   */
-  [isRootSymbol]?: true;
-  /**
-   * When `true`, the node is a reaction function with signature `() =>
-   * boolean`.
-   */
-  [isReactionSymbol]?: true;
 }
 
-interface Reaction extends Node {
-  (): boolean;
+interface Reaction extends Owner {
+  (): void;
+  [statusSymbol]?: typeof checkSymbol | typeof cleanSymbol;
 }
 
-let currentNode: Node | undefined;
+type Node = Subject | (Subject & Reaction) | Owner;
 
-/**
- * Root nodes that are not clean.
- */
-let queue = [];
+let currentOwner: Owner | undefined;
 
-const pushDescendants = (node: Node) => {
-  if (node[childrenSymbol]) {
-    let child: Node;
-    for (let i = 0; i < node[childrenSymbol].length; i++) {
-      child = node[childrenSymbol][i]!;
-      if (child[statusSymbol] === cleanSymbol) {
-        child[statusSymbol] = checkSymbol;
-        pushDescendants(child);
+const queue: Owner[] = [];
+
+const pushOwner = (owner: Node & Owner, status?: typeof checkSymbol) => {
+  if (typeof owner === "function") {
+    if (status) {
+      owner[statusSymbol] = checkSymbol;
+    } else {
+      delete owner[statusSymbol];
+    }
+    if (parentsSymbol in owner) {
+      const parents = owner[parentsSymbol]!;
+      for (let i = 0; i < parents.length; i++) {
+        pushOwner(parents[i]!, checkSymbol);
       }
     }
+  } else {
+    queue.push(owner);
   }
 };
 
-export const push = (node: Node) => {
-  if (statusSymbol in node) {
-    if (node[statusSymbol] === cleanSymbol) {
-      queue.push(node);
+export const push = (subject: Subject) => {
+  if (parentsSymbol in subject) {
+    const parents = subject[parentsSymbol]!;
+    for (let i = 0; i < parents.length; i++) {
+      pushOwner(parents[i]!);
     }
-    delete node[statusSymbol];
-    pushDescendants(node);
   }
 };
 
-export const createDependency = (node: Node) => {};
+export const observe = (subject: Subject) => {};
 
 export const createRoot = (callback: () => {}) => {};
 
