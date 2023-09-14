@@ -74,7 +74,7 @@ interface Owner {
   [teardownsSymbol]?: (() => void) | (() => void)[];
 }
 
-interface Reaction {
+interface Reaction extends SubjectInternal, Owner {
   (): void;
   /**
    * Absent state means dirty state.
@@ -82,23 +82,18 @@ interface Reaction {
   [stateSymbol]?: Exclude<State, typeof dirtyReactionState>;
 }
 
-interface Root {
+interface Root extends Owner {
   [enqueuedSymbol]?: true;
 }
 
-type Node =
-  | SubjectInternal
-  | (SubjectInternal & Owner & Reaction)
-  | (Owner & Root);
-
 type Subject = Record<string | number | symbol, unknown> | (() => void);
 
-let currentOwner: (Node & Owner) | undefined;
+let currentOwner: (Reaction | Root) | undefined;
 
-const queue: (Node & Root)[] = [];
+const queue: Root[] = [];
 
 const pushOwner = (
-  owner: Node & Owner,
+  owner: Reaction | Root,
   state: typeof checkReactionState | typeof dirtyReactionState
 ) => {
   if (typeof owner === "function") {
@@ -116,14 +111,14 @@ const pushOwner = (
       }
     }
   } else if (!(enqueuedSymbol in owner)) {
-    (owner as Root)[enqueuedSymbol] = true;
+    owner[enqueuedSymbol] = true;
     queue.push(owner);
   }
 };
 
 export const push: {
   (subject: Subject): void;
-} = (subject: Node & SubjectInternal) => {
+} = (subject: SubjectInternal | Reaction) => {
   if (parentsSymbol in subject) {
     const parents = subject[parentsSymbol]!;
     for (let i = 0; i < parents.length; i++) {
