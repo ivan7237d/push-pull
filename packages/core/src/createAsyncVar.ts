@@ -94,6 +94,7 @@ export const createAsyncVar: <Value, Error>(
   const emit = () => {
     emitting = true;
     if (teardown === pendingSymbol) {
+      // eslint-disable-next-line no-use-before-define
       runClientCallback(produce, voidSymbol);
     }
     for (const [subscriber, subscriberValue] of dirtySubscribers.entries()) {
