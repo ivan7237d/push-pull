@@ -57,10 +57,13 @@ const stateSymbol = Symbol("state");
 const teardownsSymbol = Symbol("teardowns");
 const enqueuedSymbol = Symbol("enqueued");
 
-const cleanState = 0;
-const checkState = 1;
-const dirtyState = 2;
-type State = typeof cleanState | typeof checkState | typeof dirtyState;
+const cleanReactionState = 0;
+const checkReactionState = 1;
+const dirtyReactionState = 2;
+type State =
+  | typeof cleanReactionState
+  | typeof checkReactionState
+  | typeof dirtyReactionState;
 
 interface SubjectInternal {
   [parentsSymbol]?: (Owner | Reaction)[];
@@ -76,7 +79,7 @@ interface Reaction {
   /**
    * Absent state means dirty state.
    */
-  [stateSymbol]?: Exclude<State, typeof dirtyState>;
+  [stateSymbol]?: Exclude<State, typeof dirtyReactionState>;
 }
 
 interface Root {
@@ -96,11 +99,11 @@ const queue: (Node & Root)[] = [];
 
 const pushOwner = (
   owner: Node & Owner,
-  state: typeof checkState | typeof dirtyState
+  state: typeof checkReactionState | typeof dirtyReactionState
 ) => {
   if (typeof owner === "function") {
-    if ((owner[stateSymbol] ?? dirtyState) < state) {
-      if (state === dirtyState) {
+    if ((owner[stateSymbol] ?? dirtyReactionState) < state) {
+      if (state === dirtyReactionState) {
         delete owner[stateSymbol];
       } else {
         owner[stateSymbol] = state;
@@ -108,7 +111,7 @@ const pushOwner = (
       if (parentsSymbol in owner) {
         const parents = owner[parentsSymbol]!;
         for (let i = 0; i < parents.length; i++) {
-          pushOwner(parents[i]!, checkState);
+          pushOwner(parents[i]!, checkReactionState);
         }
       }
     }
@@ -124,7 +127,7 @@ export const push: {
   if (parentsSymbol in subject) {
     const parents = subject[parentsSymbol]!;
     for (let i = 0; i < parents.length; i++) {
-      pushOwner(parents[i]!, dirtyState);
+      pushOwner(parents[i]!, dirtyReactionState);
     }
   }
 };
