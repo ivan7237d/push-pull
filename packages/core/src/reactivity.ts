@@ -53,54 +53,78 @@
 
 const parentsSymbol = Symbol("parents");
 const childrenSymbol = Symbol("children");
-const statusSymbol = Symbol("status");
-const checkSymbol = Symbol("check");
-const cleanSymbol = Symbol("clean");
+const stateSymbol = Symbol("state");
 const teardownsSymbol = Symbol("teardowns");
+const enqueuedSymbol = Symbol("enqueued");
 
-interface Subject {
+const cleanState = 0;
+const checkState = 1;
+const dirtyState = 2;
+type State = typeof cleanState | typeof checkState | typeof dirtyState;
+
+interface SubjectInternal {
   [parentsSymbol]?: (Owner | Reaction)[];
 }
 
 interface Owner {
-  [childrenSymbol]?: (Subject | Reaction)[];
+  [childrenSymbol]?: (SubjectInternal | Reaction)[];
   [teardownsSymbol]?: (() => void) | (() => void)[];
 }
 
-interface Reaction extends Owner {
+interface Reaction {
   (): void;
-  [statusSymbol]?: typeof checkSymbol | typeof cleanSymbol;
+  /**
+   * Absent state means dirty state.
+   */
+  [stateSymbol]?: Exclude<State, typeof dirtyState>;
 }
 
-type Node = Subject | (Subject & Reaction) | Owner;
+interface Root {
+  [enqueuedSymbol]?: true;
+}
 
-let currentOwner: Owner | undefined;
+type Node =
+  | SubjectInternal
+  | (SubjectInternal & Owner & Reaction)
+  | (Owner & Root);
 
-const queue: Owner[] = [];
+type Subject = Record<string | number | symbol, unknown> | (() => void);
 
-const pushOwner = (owner: Node & Owner, status?: typeof checkSymbol) => {
+let currentOwner: (Node & Owner) | undefined;
+
+const queue: (Node & Root)[] = [];
+
+const pushOwner = (
+  owner: Node & Owner,
+  state: typeof checkState | typeof dirtyState
+) => {
   if (typeof owner === "function") {
-    if (status) {
-      owner[statusSymbol] = checkSymbol;
-    } else {
-      delete owner[statusSymbol];
-    }
-    if (parentsSymbol in owner) {
-      const parents = owner[parentsSymbol]!;
-      for (let i = 0; i < parents.length; i++) {
-        pushOwner(parents[i]!, checkSymbol);
+    if ((owner[stateSymbol] ?? dirtyState) < state) {
+      if (state === dirtyState) {
+        delete owner[stateSymbol];
+      } else {
+        owner[stateSymbol] = state;
+      }
+      if (parentsSymbol in owner) {
+        const parents = owner[parentsSymbol]!;
+        for (let i = 0; i < parents.length; i++) {
+          pushOwner(parents[i]!, checkState);
+        }
       }
     }
-  } else {
+  } else if (!(enqueuedSymbol in owner)) {
+    (owner as Root)[enqueuedSymbol] = true;
     queue.push(owner);
   }
 };
 
-export const push = (subject: Subject) => {
+export const push: {
+  (subject: Subject): void;
+} = (subject: Node & SubjectInternal) => {
   if (parentsSymbol in subject) {
     const parents = subject[parentsSymbol]!;
     for (let i = 0; i < parents.length; i++) {
-      pushOwner(parents[i]!);
+      pushOwner(parents[i]!, dirtyState);
     }
   }
 };
