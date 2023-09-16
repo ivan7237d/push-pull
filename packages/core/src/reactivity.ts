@@ -71,12 +71,11 @@ interface SubjectInternal {
 }
 
 interface Owner {
-  // eslint-disable-next-line no-use-before-define
-  [childrenSymbol]?: (SubjectInternal | Reaction)[];
   [teardownsSymbol]?: (() => void) | (() => void)[];
 }
 
 interface Reaction extends SubjectInternal, Owner {
+  [childrenSymbol]?: (SubjectInternal | Reaction)[];
   (): void;
   /**
    * Absent state means dirty state.
