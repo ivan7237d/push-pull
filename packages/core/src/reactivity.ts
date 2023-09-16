@@ -66,10 +66,12 @@ type State =
   | typeof dirtyReactionState;
 
 interface SubjectInternal {
-  [parentsSymbol]?: (Owner | Reaction)[];
+  // eslint-disable-next-line no-use-before-define
+  [parentsSymbol]?: Reaction[];
 }
 
 interface Owner {
+  // eslint-disable-next-line no-use-before-define
   [childrenSymbol]?: (SubjectInternal | Reaction)[];
   [teardownsSymbol]?: (() => void) | (() => void)[];
 }
@@ -83,6 +85,7 @@ interface Reaction extends SubjectInternal, Owner {
 }
 
 interface Root extends Owner {
+  [childrenSymbol]?: Reaction[];
   [enqueuedSymbol]?: true;
 }
 
@@ -90,7 +93,7 @@ type Subject = Record<string | number | symbol, unknown> | (() => void);
 
 let currentOwner: (Reaction | Root) | undefined;
 
-const queue: Root[] = [];
+const rootQueue: Root[] = [];
 
 const pushOwner = (
   owner: Reaction | Root,
@@ -112,7 +115,7 @@ const pushOwner = (
     }
   } else if (!(enqueuedSymbol in owner)) {
     owner[enqueuedSymbol] = true;
-    queue.push(owner);
+    rootQueue.push(owner);
   }
 };
 
