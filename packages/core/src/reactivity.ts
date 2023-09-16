@@ -96,14 +96,14 @@ const rootQueue: Root[] = [];
 
 const pushOwner = (
   owner: Reaction | Root,
-  state: typeof checkReactionState | typeof dirtyReactionState
+  reactionState: typeof checkReactionState | typeof dirtyReactionState
 ) => {
   if (typeof owner === "function") {
-    if ((owner[stateSymbol] ?? dirtyReactionState) < state) {
-      if (state === dirtyReactionState) {
+    if ((owner[stateSymbol] ?? dirtyReactionState) < reactionState) {
+      if (reactionState === dirtyReactionState) {
         delete owner[stateSymbol];
       } else {
-        owner[stateSymbol] = state;
+        owner[stateSymbol] = reactionState;
       }
       if (parentsSymbol in owner) {
         const parents = owner[parentsSymbol]!;
