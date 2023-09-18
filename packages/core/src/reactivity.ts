@@ -92,6 +92,7 @@ const pushReaction = (
   reaction: Reaction,
   reactionState: typeof checkReactionState | typeof dirtyReactionState
 ) => {
+  // TODO: check for cyclical dependency?
   if ((reaction[stateSymbol] ?? dirtyReactionState) < reactionState) {
     // The reason for the first condition is that if the reaction is "check" or
     // "dirty", all its ancestors have already been marked as (at least)
