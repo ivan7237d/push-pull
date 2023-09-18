@@ -139,6 +139,7 @@ export const push: {
       pushReaction(parents[i]!, dirtyReactionState);
     }
   }
+  // TODO: should not be called recursively.
   processQueues();
 };
 
