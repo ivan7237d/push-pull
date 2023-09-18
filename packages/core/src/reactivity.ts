@@ -54,8 +54,7 @@
 const parentsSymbol = Symbol("parents");
 const childrenSymbol = Symbol("children");
 const stateSymbol = Symbol("state");
-const teardownsSymbol = Symbol("teardowns");
-const enqueuedSymbol = Symbol("enqueued");
+const effectSymbol = Symbol("effect");
 
 const cleanReactionState = 0;
 const checkReactionState = 1;
@@ -70,51 +69,64 @@ interface SubjectInternal {
   [parentsSymbol]?: Reaction[];
 }
 
-interface Owner {
-  [teardownsSymbol]?: (() => void) | (() => void)[];
-}
-
-interface Reaction extends SubjectInternal, Owner {
+interface Reaction extends SubjectInternal {
   [childrenSymbol]?: (SubjectInternal | Reaction)[];
   (): void;
   /**
    * Absent state means dirty state.
    */
   [stateSymbol]?: Exclude<State, typeof dirtyReactionState>;
-}
-
-interface Root extends Owner {
-  [childrenSymbol]?: Reaction[];
-  [enqueuedSymbol]?: true;
+  /**
+   * A positive integer.
+   */
+  [effectSymbol]?: number;
 }
 
 type Subject = Record<string | number | symbol, unknown> | (() => void);
 
-let currentOwner: (Reaction | Root) | undefined;
+let currentReaction: Reaction | undefined;
+const effectQueue: Reaction[] = [];
+const teardownQueue: Reaction[] = [];
 
-const rootQueue: Root[] = [];
-
-const pushOwner = (
-  owner: Reaction | Root,
+const pushReaction = (
+  reaction: Reaction,
   reactionState: typeof checkReactionState | typeof dirtyReactionState
 ) => {
-  if (typeof owner === "function") {
-    if ((owner[stateSymbol] ?? dirtyReactionState) < reactionState) {
-      if (reactionState === dirtyReactionState) {
-        delete owner[stateSymbol];
-      } else {
-        owner[stateSymbol] = reactionState;
-      }
-      if (parentsSymbol in owner) {
-        const parents = owner[parentsSymbol]!;
-        for (let i = 0; i < parents.length; i++) {
-          pushOwner(parents[i]!, checkReactionState);
-        }
+  if ((reaction[stateSymbol] ?? dirtyReactionState) < reactionState) {
+    // The reason for the first condition is that if the reaction is "check" or
+    // "dirty", all its ancestors have already been marked as (at least)
+    // "check".
+    if (
+      reaction[stateSymbol] === cleanReactionState &&
+      parentsSymbol in reaction
+    ) {
+      const parents = reaction[parentsSymbol]!;
+      for (let i = 0; i < parents.length; i++) {
+        pushReaction(parents[i]!, checkReactionState);
       }
     }
-  } else if (!(enqueuedSymbol in owner)) {
-    owner[enqueuedSymbol] = true;
-    rootQueue.push(owner);
+    if (reactionState === dirtyReactionState) {
+      delete reaction[stateSymbol];
+      if (reaction[effectSymbol]) {
+        effectQueue.push(reaction);
+      }
+    } else {
+      reaction[stateSymbol] = reactionState;
+    }
+  }
+};
+
+const processQueues = () => {
+  let reaction: Reaction;
+  for (let i = 0; i < effectQueue.length; i++) {
+    // TODO
+  }
+  effectQueue.length = 0;
+  for (let i = 0; i < teardownQueue.length; i++) {
+    reaction = teardownQueue[i]!;
+    if (!(parentsSymbol in reaction || effectSymbol in reaction)) {
+      delete reaction[stateSymbol];
+    }
   }
 };
 
@@ -124,14 +136,60 @@ export const push: {
   if (parentsSymbol in subject) {
     const parents = subject[parentsSymbol]!;
     for (let i = 0; i < parents.length; i++) {
-      pushOwner(parents[i]!, dirtyReactionState);
+      pushReaction(parents[i]!, dirtyReactionState);
+    }
+  }
+  processQueues();
+};
+
+const removeFromChildren = (parent: SubjectInternal | Reaction) => {
+  if (childrenSymbol in parent) {
+    const children = parent[childrenSymbol]!;
+    delete parent[childrenSymbol];
+    let swap: number, child: SubjectInternal | Reaction, parents: Reaction[];
+    for (let i = 0; i < children.length; i++) {
+      child = children[i]!;
+      parents = child[parentsSymbol]!;
+      if (parents.length === 1) {
+        delete child[parentsSymbol];
+        if (!(effectSymbol in child) && typeof child === "function") {
+          teardownQueue.push(child);
+          removeFromChildren(child);
+        }
+      } else {
+        swap = parents.indexOf(parent);
+        parents[swap] = parents[parents.length - 1]!;
+        parents.pop();
+      }
     }
   }
 };
 
-export const observe = (subject: Subject) => {};
+export const pull = (subject: Subject) => {};
 
-export const createRoot = (callback: () => {}) => {};
+export const createEffect = (reaction: Reaction) => {
+  let disposed = false;
+  reaction[effectSymbol] = (reaction[effectSymbol] ?? 0) + 1;
+  if (reaction[effectSymbol] === 1) {
+    effectQueue.push(reaction);
+  }
+  processQueues();
+  return () => {
+    if (disposed) {
+      return;
+    }
+    disposed = true;
+    if (reaction[effectSymbol] === 1) {
+      delete reaction[effectSymbol];
+      if (!(parentsSymbol in reaction)) {
+        teardownQueue.push(reaction);
+        removeFromChildren(reaction);
+      }
+    } else {
+      reaction[effectSymbol]!--;
+    }
+  };
+};
 
 // const runReaction = (reaction: Reaction) => {
 //   // Remove dependencies.
