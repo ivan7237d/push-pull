@@ -73,7 +73,7 @@ interface Reaction extends SubjectInternal {
   [childrenSymbol]?: (SubjectInternal | Reaction)[];
   (): void;
   /**
-   * Absent state means dirty state.
+   * Absent state means `dirtyReactionState`.
    */
   [stateSymbol]?: Exclude<State, typeof dirtyReactionState>;
   /**
@@ -87,12 +87,14 @@ type Subject = Record<string | number | symbol, unknown> | (() => void);
 let currentReaction: Reaction | undefined;
 const effectQueue: Reaction[] = [];
 const teardownQueue: Reaction[] = [];
+let newChildren: (SubjectInternal | Reaction)[] | undefined;
+let newChildrenIndex = 0;
 
 const pushReaction = (
   reaction: Reaction,
   reactionState: typeof checkReactionState | typeof dirtyReactionState
 ) => {
-  // TODO: check for cyclical dependency?
+  // TODO: handle the case of cyclical dependency?
   if ((reaction[stateSymbol] ?? dirtyReactionState) < reactionState) {
     // The reason for the first condition is that if the reaction is "check" or
     // "dirty", all its ancestors have already been marked as (at least)
@@ -144,19 +146,22 @@ export const push: {
   processQueues();
 };
 
-const removeFromChildren = (parent: SubjectInternal | Reaction) => {
+const removeFromChildren = (
+  parent: SubjectInternal | Reaction,
+  index: number
+) => {
   if (childrenSymbol in parent) {
     const children = parent[childrenSymbol]!;
     delete parent[childrenSymbol];
     let swap: number, child: SubjectInternal | Reaction, parents: Reaction[];
-    for (let i = 0; i < children.length; i++) {
+    for (let i = index; i < children.length; i++) {
       child = children[i]!;
       parents = child[parentsSymbol]!;
       if (parents.length === 1) {
         delete child[parentsSymbol];
         if (!(effectSymbol in child) && typeof child === "function") {
           teardownQueue.push(child);
-          removeFromChildren(child);
+          removeFromChildren(child, 0);
         }
       } else {
         swap = parents.indexOf(parent);
@@ -165,6 +170,37 @@ const removeFromChildren = (parent: SubjectInternal | Reaction) => {
       }
     }
   }
+};
+
+const runReaction = (reaction: Reaction) => {
+  const outerNewChildren = newChildren;
+  const outerNewChildrenIndex = newChildrenIndex;
+  newChildren = undefined as typeof newChildren;
+  newChildrenIndex = 0;
+  reaction();
+  if (newChildren) {
+    removeFromChildren(reaction, newChildrenIndex);
+    if (reaction[childrenSymbol] && newChildrenIndex > 0) {
+      reaction[childrenSymbol].length = newChildrenIndex + newChildren.length;
+      for (let i = 0; i < newChildren.length; i++) {
+        reaction[childrenSymbol][newChildrenIndex + i] = newChildren[i]!;
+      }
+    } else {
+      reaction[childrenSymbol] = newChildren;
+    }
+    let child: SubjectInternal | Reaction;
+    for (let i = newChildrenIndex; i < reaction[childrenSymbol].length; i++) {
+      child = reaction[childrenSymbol][i]!;
+      if (parentsSymbol in child) {
+        child[parentsSymbol]!.push(reaction);
+      } else {
+        child[parentsSymbol] = [reaction];
+      }
+    }
+  }
+  reaction[stateSymbol] = cleanReactionState;
+  newChildren = outerNewChildren;
+  newChildrenIndex = outerNewChildrenIndex;
 };
 
 export const pull = (subject: Subject) => {};
@@ -185,7 +221,7 @@ export const createEffect = (reaction: Reaction) => {
       delete reaction[effectSymbol];
       if (!(parentsSymbol in reaction)) {
         teardownQueue.push(reaction);
-        removeFromChildren(reaction);
+        removeFromChildren(reaction, 0);
       }
     } else {
       reaction[effectSymbol]!--;
