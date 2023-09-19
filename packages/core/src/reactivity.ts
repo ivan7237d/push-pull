@@ -179,18 +179,20 @@ const runReaction = (reaction: Reaction) => {
   newChildrenIndex = 0;
   reaction();
   if (newChildren) {
+    let children: (Reaction | SubjectInternal)[];
     removeFromChildren(reaction, newChildrenIndex);
-    if (reaction[childrenSymbol] && newChildrenIndex > 0) {
-      reaction[childrenSymbol].length = newChildrenIndex + newChildren.length;
+    if (childrenSymbol in reaction && newChildrenIndex > 0) {
+      children = reaction[childrenSymbol];
+      children.length = newChildrenIndex + newChildren.length;
       for (let i = 0; i < newChildren.length; i++) {
-        reaction[childrenSymbol][newChildrenIndex + i] = newChildren[i]!;
+        children[newChildrenIndex + i] = newChildren[i]!;
       }
     } else {
-      reaction[childrenSymbol] = newChildren;
+      children = reaction[childrenSymbol] = newChildren;
     }
     let child: SubjectInternal | Reaction;
-    for (let i = newChildrenIndex; i < reaction[childrenSymbol].length; i++) {
-      child = reaction[childrenSymbol][i]!;
+    for (let i = newChildrenIndex; i < children.length; i++) {
+      child = children[i]!;
       if (parentsSymbol in child) {
         child[parentsSymbol]!.push(reaction);
       } else {
