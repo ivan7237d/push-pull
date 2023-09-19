@@ -64,13 +64,13 @@ type State =
   | typeof checkReactionState
   | typeof dirtyReactionState;
 
-interface SubjectInternal {
+interface Subject {
   // eslint-disable-next-line no-use-before-define
   [parentsSymbol]?: Reaction[];
 }
 
-interface Reaction extends SubjectInternal {
-  [childrenSymbol]?: (SubjectInternal | Reaction)[];
+interface Reaction extends Subject {
+  [childrenSymbol]?: (Subject | Reaction)[];
   (): void;
   /**
    * Absent state means `dirtyReactionState`.
@@ -82,12 +82,10 @@ interface Reaction extends SubjectInternal {
   [effectSymbol]?: number;
 }
 
-type Subject = Record<string | number | symbol, unknown> | (() => void);
-
 let currentReaction: Reaction | undefined;
 const effectQueue: Reaction[] = [];
 const teardownQueue: Reaction[] = [];
-let newChildren: (SubjectInternal | Reaction)[] | undefined;
+let newChildren: (Subject | Reaction)[] | undefined;
 let newChildrenIndex = 0;
 
 const pushReaction = (
@@ -134,8 +132,8 @@ const processQueues = () => {
 };
 
 export const push: {
-  (subject: Subject): void;
-} = (subject: SubjectInternal | Reaction) => {
+  (subject: Record<string | number | symbol, unknown> | (() => void)): void;
+} = (subject: Subject | Reaction) => {
   if (parentsSymbol in subject) {
     const parents = subject[parentsSymbol]!;
     for (let i = 0; i < parents.length; i++) {
@@ -146,14 +144,11 @@ export const push: {
   processQueues();
 };
 
-const removeFromChildren = (
-  parent: SubjectInternal | Reaction,
-  index: number
-) => {
+const removeFromChildren = (parent: Subject | Reaction, index: number) => {
   if (childrenSymbol in parent) {
     const children = parent[childrenSymbol]!;
     delete parent[childrenSymbol];
-    let swap: number, child: SubjectInternal | Reaction, parents: Reaction[];
+    let swap: number, child: Subject | Reaction, parents: Reaction[];
     for (let i = index; i < children.length; i++) {
       child = children[i]!;
       parents = child[parentsSymbol]!;
@@ -179,7 +174,7 @@ const runReaction = (reaction: Reaction) => {
   newChildrenIndex = 0;
   reaction();
   if (newChildren) {
-    let children: (Reaction | SubjectInternal)[];
+    let children: (Reaction | Subject)[];
     removeFromChildren(reaction, newChildrenIndex);
     if (childrenSymbol in reaction && newChildrenIndex > 0) {
       children = reaction[childrenSymbol];
@@ -190,7 +185,7 @@ const runReaction = (reaction: Reaction) => {
     } else {
       children = reaction[childrenSymbol] = newChildren;
     }
-    let child: SubjectInternal | Reaction;
+    let child: Subject | Reaction;
     for (let i = newChildrenIndex; i < children.length; i++) {
       child = children[i]!;
       if (parentsSymbol in child) {
@@ -205,9 +200,13 @@ const runReaction = (reaction: Reaction) => {
   newChildrenIndex = outerNewChildrenIndex;
 };
 
-export const pull = (subject: Subject) => {};
+export const pull: {
+  (subject: Record<string | number | symbol, unknown> | (() => void)): void;
+} = (subject: Subject | Reaction) => {};
 
-export const createEffect = (reaction: Reaction) => {
+export const createEffect: {
+  (reaction: () => void): void;
+} = (reaction: Reaction) => {
   let disposed = false;
   reaction[effectSymbol] = (reaction[effectSymbol] ?? 0) + 1;
   if (reaction[effectSymbol] === 1) {
