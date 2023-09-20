@@ -207,26 +207,57 @@ const runReaction = (reaction: Reaction) => {
   unchangedChildrenCount = outerUnchangedChildrenCount;
 };
 
+const ensureIsClean = (subject: Subject | Reaction) => {
+  if (
+    typeof subject !== "function" ||
+    subject[stateSymbol] === cleanReactionState
+  ) {
+    // From here on, we know that `subject` is a `Reaction`.
+    return;
+  }
+  // In this case we don't know if the reaction needs to be run, but by
+  // recursively calling `ensureIsClean` for children, we'll eventually know one
+  // way or the other.
+  if (subject[stateSymbol] === checkReactionState) {
+    for (let i = 0; i < subject[childrenSymbol]!.length; i++) {
+      ensureIsClean(subject[childrenSymbol]![i]!);
+      // "If the reaction is dirty..."
+      if (!(stateSymbol in subject)) {
+        break;
+      }
+    }
+  }
+  // "If the reaction is dirty..."
+  if (!(stateSymbol in subject)) {
+    runReaction(subject);
+  } else {
+    // At this point we know that all children are clean, so we can mark the
+    // reaction as clean.
+    subject[stateSymbol] = cleanReactionState;
+  }
+};
+
 export const pull: {
   (subject: Record<string | number | symbol, unknown> | (() => void)): void;
 } = (subject: Subject | Reaction) => {
-  if (!currentReaction) {
-    throw new Error(`TODO: un-tracking?`);
-  }
-
-  if (
-    !newChildren &&
-    currentReaction[childrenSymbol]?.[unchangedChildrenCount] === subject
-  ) {
-    unchangedChildrenCount++;
-  } else if (!newChildren) {
-    newChildren = [subject];
+  if (currentReaction) {
+    if (
+      !newChildren &&
+      currentReaction[childrenSymbol]?.[unchangedChildrenCount] === subject
+    ) {
+      unchangedChildrenCount++;
+    } else if (newChildren) {
+      newChildren.push(subject);
+    } else {
+      newChildren = [subject];
+    }
+    ensureIsClean(subject);
   } else {
-    newChildren.push(subject);
-  }
-
-  if (currentReaction[stateSymbol] === cleanReactionState) {
-    return;
+    // TODO: add untrack-like function to allow triggering these errors inside a
+    // reaction? Or is linting sufficient?
+    throw new Error(
+      "A reaction (a function that invokes `pull`) cannot be called by the client (you), but can only be passed to `createEffect` and `pull`."
+    );
   }
 };
 
@@ -255,63 +286,3 @@ export const createEffect: {
     }
   };
 };
-
-// const runReaction = (reaction: Reaction) => {
-//   // Remove dependencies.
-//   const parents = childToParents.get(reaction)!;
-//   for (const parent of parents) {
-//     parentToChildren.get(parent)!.delete(reaction);
-//   }
-//   parents.clear();
-
-//   const outerReaction = currentReaction;
-//   currentReaction = reaction;
-//   if (reaction()) {
-//     for (const child of parentToChildren.get(reaction)!) {
-//       dirtyReactions.add(child);
-//     }
-//   }
-//   queue.delete(reaction);
-
-//   currentReaction = outerReaction;
-// };
-
-// /**
-//  * Run reaction if dirty or if a parent is dirty.
-//  */
-// const runReactionIfNecessary = (reaction: Reaction) => {
-//   if (pendingReactions.has(reaction)) {
-//     for (const parent of childToParents.get(reaction)!) {
-//       runReactionIfNecessary(parent);
-//       if (dirtyReactions.has(reaction)) {
-//         break;
-//       }
-//     }
-//     pendingReactions.delete(reaction);
-//   }
-
-//   if (dirtyReactions.has(reaction)) {
-//     runReaction(reaction);
-//     dirtyReactions.delete(reaction);
-//   }
-// };
-
-// export const addReaction = (reaction: Reaction) => {
-//   // TODO
-// };
-
-// /**
-//  * Should only be called when the reaction has no children.
-//  */
-// export const removeReaction = (reaction: Reaction) => {
-//   parentToChildren.delete(reaction);
-//   for (const parent of childToParents.get(reaction)!) {
-//     parentToChildren.get(parent)!.delete(reaction);
-//   }
-//   childToParents.delete(reaction);
-// };
-
-// export const push = (reaction: Reaction) => {
-//   dirtyReactions.add(reaction);
-//   // TODO
-// };
