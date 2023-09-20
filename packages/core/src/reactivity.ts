@@ -126,7 +126,8 @@ const pushReaction = (
 const processQueues = () => {
   let reaction: Reaction;
   for (let i = 0; i < effectQueue.length; i++) {
-    // TODO
+    // eslint-disable-next-line no-use-before-define
+    ensureIsClean(effectQueue[i]!);
   }
   effectQueue.length = 0;
   for (let i = 0; i < teardownQueue.length; i++) {
@@ -135,6 +136,7 @@ const processQueues = () => {
       delete reaction[stateSymbol];
     }
   }
+  teardownQueue.length = 0;
   // TODO: clean up newChildren?
 };
 
@@ -207,33 +209,33 @@ const runReaction = (reaction: Reaction) => {
   unchangedChildrenCount = outerUnchangedChildrenCount;
 };
 
-const ensureIsClean = (subject: Subject | Reaction) => {
-  if (
-    typeof subject !== "function" ||
-    subject[stateSymbol] === cleanReactionState
-  ) {
-    // From here on, we know that `subject` is a `Reaction`.
+const ensureIsClean = (reaction: Reaction) => {
+  if (reaction[stateSymbol] === cleanReactionState) {
     return;
   }
   // In this case we don't know if the reaction needs to be run, but by
   // recursively calling `ensureIsClean` for children, we'll eventually know one
   // way or the other.
-  if (subject[stateSymbol] === checkReactionState) {
-    for (let i = 0; i < subject[childrenSymbol]!.length; i++) {
-      ensureIsClean(subject[childrenSymbol]![i]!);
+  if (reaction[stateSymbol] === checkReactionState) {
+    let child: Subject | Reaction;
+    for (let i = 0; i < reaction[childrenSymbol]!.length; i++) {
+      child = reaction[childrenSymbol]![i]!;
+      if (typeof child === "function") {
+        ensureIsClean(child);
+      }
       // "If the reaction is dirty..."
-      if (!(stateSymbol in subject)) {
+      if (!(stateSymbol in reaction)) {
         break;
       }
     }
   }
   // "If the reaction is dirty..."
-  if (!(stateSymbol in subject)) {
-    runReaction(subject);
+  if (!(stateSymbol in reaction)) {
+    runReaction(reaction);
   } else {
     // At this point we know that all children are clean, so we can mark the
     // reaction as clean.
-    subject[stateSymbol] = cleanReactionState;
+    reaction[stateSymbol] = cleanReactionState;
   }
 };
 
@@ -251,7 +253,9 @@ export const pull: {
     } else {
       newChildren = [subject];
     }
-    ensureIsClean(subject);
+    if (typeof subject === "function") {
+      ensureIsClean(subject);
+    }
   } else {
     // TODO: add untrack-like function to allow triggering these errors inside a
     // reaction? Or is linting sufficient?
