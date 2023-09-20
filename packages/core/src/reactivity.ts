@@ -83,10 +83,16 @@ interface Reaction extends Subject {
 }
 
 let currentReaction: Reaction | undefined;
+/**
+ * As part of a perf optimization trick, when running a reaction, we bump
+ * `unchangedChildrenCount` until the children array diverges from the old
+ * children array, at which point we begin adding children to `newChildren`.
+ * This allows to avoid updating children when they stay the same.
+ */
+let newChildren: (Subject | Reaction)[] | undefined;
+let unchangedChildrenCount = 0;
 const effectQueue: Reaction[] = [];
 const teardownQueue: Reaction[] = [];
-let newChildren: (Subject | Reaction)[] | undefined;
-let newChildrenIndex = 0;
 
 const pushReaction = (
   reaction: Reaction,
@@ -129,6 +135,7 @@ const processQueues = () => {
       delete reaction[stateSymbol];
     }
   }
+  // TODO: clean up newChildren?
 };
 
 export const push: {
@@ -169,27 +176,27 @@ const removeFromChildren = (parent: Subject | Reaction, index: number) => {
 
 const runReaction = (reaction: Reaction) => {
   const outerNewChildren = newChildren;
-  const outerNewChildrenIndex = newChildrenIndex;
+  const outerUnchangedChildrenCount = unchangedChildrenCount;
   newChildren = undefined as typeof newChildren;
-  newChildrenIndex = 0;
+  unchangedChildrenCount = 0;
   reaction();
   if (newChildren) {
     let children: (Reaction | Subject)[];
-    removeFromChildren(reaction, newChildrenIndex);
-    if (childrenSymbol in reaction && newChildrenIndex > 0) {
+    removeFromChildren(reaction, unchangedChildrenCount);
+    if (childrenSymbol in reaction && unchangedChildrenCount > 0) {
       children = reaction[childrenSymbol];
-      children.length = newChildrenIndex + newChildren.length;
+      children.length = unchangedChildrenCount + newChildren.length;
       for (let i = 0; i < newChildren.length; i++) {
-        children[newChildrenIndex + i] = newChildren[i]!;
+        children[unchangedChildrenCount + i] = newChildren[i]!;
       }
     } else {
       children = reaction[childrenSymbol] = newChildren;
     }
     let child: Subject | Reaction;
-    for (let i = newChildrenIndex; i < children.length; i++) {
+    for (let i = unchangedChildrenCount; i < children.length; i++) {
       child = children[i]!;
       if (parentsSymbol in child) {
-        child[parentsSymbol]!.push(reaction);
+        child[parentsSymbol].push(reaction);
       } else {
         child[parentsSymbol] = [reaction];
       }
@@ -197,12 +204,31 @@ const runReaction = (reaction: Reaction) => {
   }
   reaction[stateSymbol] = cleanReactionState;
   newChildren = outerNewChildren;
-  newChildrenIndex = outerNewChildrenIndex;
+  unchangedChildrenCount = outerUnchangedChildrenCount;
 };
 
 export const pull: {
   (subject: Record<string | number | symbol, unknown> | (() => void)): void;
-} = (subject: Subject | Reaction) => {};
+} = (subject: Subject | Reaction) => {
+  if (!currentReaction) {
+    throw new Error(`TODO: un-tracking?`);
+  }
+
+  if (
+    !newChildren &&
+    currentReaction[childrenSymbol]?.[unchangedChildrenCount] === subject
+  ) {
+    unchangedChildrenCount++;
+  } else if (!newChildren) {
+    newChildren = [subject];
+  } else {
+    newChildren.push(subject);
+  }
+
+  if (currentReaction[stateSymbol] === cleanReactionState) {
+    return;
+  }
+};
 
 export const createEffect: {
   (reaction: () => void): void;
