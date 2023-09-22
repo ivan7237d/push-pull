@@ -217,9 +217,10 @@ const ensureIsClean = (reaction: Reaction) => {
   // recursively calling `ensureIsClean` for children, we'll eventually know one
   // way or the other.
   if (reaction[stateSymbol] === checkReactionState) {
+    const children = reaction[childrenSymbol]!;
     let child: Subject | Reaction;
-    for (let i = 0; i < reaction[childrenSymbol]!.length; i++) {
-      child = reaction[childrenSymbol]![i]!;
+    for (let i = 0; i < children.length; i++) {
+      child = children[i]!;
       if (typeof child === "function") {
         ensureIsClean(child);
       }
@@ -257,8 +258,9 @@ export const pull: {
       ensureIsClean(subject);
     }
   } else {
-    // TODO: add untrack-like function to allow triggering these errors inside a
-    // reaction? Or is linting sufficient?
+    // TODO: add untrack-like function to allow also triggering these errors
+    // inside a reaction? Or is linting sufficient to prevent accidental
+    // subscriptions?
     throw new Error(
       "A reaction (a function that invokes `pull`) cannot be called by the client (you), but can only be passed to `createEffect` and `pull`."
     );
