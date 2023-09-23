@@ -93,6 +93,7 @@ let newChildren: (Subject | Reaction)[] | undefined;
 let unchangedChildrenCount = 0;
 const effectQueue: Reaction[] = [];
 const teardownQueue: Reaction[] = [];
+let processingQueues = false;
 
 const pushReaction = (
   reaction: Reaction,
@@ -123,21 +124,43 @@ const pushReaction = (
   }
 };
 
+const removeFromChildren = (parent: Subject | Reaction, index: number) => {
+  if (childrenSymbol in parent) {
+    const children = parent[childrenSymbol];
+    let swap: number, child: Subject | Reaction, parents: Reaction[];
+    for (let i = index; i < children.length; i++) {
+      child = children[i]!;
+      parents = child[parentsSymbol]!;
+      if (parents.length === 1) {
+        delete child[parentsSymbol];
+        if (typeof child === "function" && !(effectSymbol in child)) {
+          teardownQueue.push(child);
+        }
+      } else {
+        swap = parents.indexOf(parent);
+        parents[swap] = parents[parents.length - 1]!;
+        parents.pop();
+      }
+    }
+  }
+};
+
 const processQueues = () => {
-  let reaction: Reaction;
   for (let i = 0; i < effectQueue.length; i++) {
     // eslint-disable-next-line no-use-before-define
     ensureIsClean(effectQueue[i]!);
   }
   effectQueue.length = 0;
+  let reaction: Reaction;
   for (let i = 0; i < teardownQueue.length; i++) {
     reaction = teardownQueue[i]!;
     if (!(parentsSymbol in reaction || effectSymbol in reaction)) {
+      removeFromChildren(reaction, 0);
       delete reaction[stateSymbol];
+      delete reaction[childrenSymbol];
     }
   }
   teardownQueue.length = 0;
-  // TODO: clean up newChildren?
 };
 
 export const push: {
@@ -149,30 +172,10 @@ export const push: {
       pushReaction(parents[i]!, dirtyReactionState);
     }
   }
-  // TODO: should not be called recursively.
-  processQueues();
-};
-
-const removeFromChildren = (parent: Subject | Reaction, index: number) => {
-  if (childrenSymbol in parent) {
-    const children = parent[childrenSymbol]!;
-    delete parent[childrenSymbol];
-    let swap: number, child: Subject | Reaction, parents: Reaction[];
-    for (let i = index; i < children.length; i++) {
-      child = children[i]!;
-      parents = child[parentsSymbol]!;
-      if (parents.length === 1) {
-        delete child[parentsSymbol];
-        if (!(effectSymbol in child) && typeof child === "function") {
-          teardownQueue.push(child);
-          removeFromChildren(child, 0);
-        }
-      } else {
-        swap = parents.indexOf(parent);
-        parents[swap] = parents[parents.length - 1]!;
-        parents.pop();
-      }
-    }
+  if (!processingQueues) {
+    processingQueues = true;
+    processQueues();
+    processingQueues = false;
   }
 };
 
@@ -203,6 +206,12 @@ const runReaction = (reaction: Reaction) => {
         child[parentsSymbol] = [reaction];
       }
     }
+  } else if (
+    childrenSymbol in reaction &&
+    unchangedChildrenCount < reaction[childrenSymbol].length
+  ) {
+    removeFromChildren(reaction, unchangedChildrenCount);
+    reaction[childrenSymbol].length = unchangedChildrenCount;
   }
   reaction[stateSymbol] = cleanReactionState;
   newChildren = outerNewChildren;
@@ -285,7 +294,6 @@ export const createEffect: {
       delete reaction[effectSymbol];
       if (!(parentsSymbol in reaction)) {
         teardownQueue.push(reaction);
-        removeFromChildren(reaction, 0);
       }
     } else {
       reaction[effectSymbol]!--;
