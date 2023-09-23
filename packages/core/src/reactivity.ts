@@ -182,8 +182,10 @@ export const push: {
 const runReaction = (reaction: Reaction) => {
   const outerNewChildren = newChildren;
   const outerUnchangedChildrenCount = unchangedChildrenCount;
+  const outerCurrentReaction = currentReaction;
   newChildren = undefined as typeof newChildren;
   unchangedChildrenCount = 0;
+  currentReaction = reaction;
   reaction();
   if (newChildren) {
     let children: (Reaction | Subject)[];
@@ -216,6 +218,7 @@ const runReaction = (reaction: Reaction) => {
   reaction[stateSymbol] = cleanReactionState;
   newChildren = outerNewChildren;
   unchangedChildrenCount = outerUnchangedChildrenCount;
+  currentReaction = outerCurrentReaction;
 };
 
 const ensureIsClean = (reaction: Reaction) => {
