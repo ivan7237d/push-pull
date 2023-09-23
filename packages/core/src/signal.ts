@@ -1,6 +1,8 @@
 import { pull, push } from "./reactivity";
 
-export const createSignal = <Value>(value: Value) => {
+export const createSignal = <Value>(
+  value: Value
+): readonly [() => Value, (newValue: Value) => void] => {
   const subject = {};
   return [
     () => {

@@ -2,7 +2,7 @@ import { pull, push } from "./reactivity";
 
 const voidSymbol = Symbol("void");
 
-export const createMemo = <Value>(get: () => Value) => {
+export const createMemo = <Value>(get: () => Value): (() => Value) => {
   let value: typeof voidSymbol | Value = voidSymbol;
   const reaction = () => {
     const newValue = get();
