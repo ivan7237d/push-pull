@@ -145,22 +145,26 @@ const removeFromChildren = (parent: Subject | Reaction, index: number) => {
   }
 };
 
-const processQueues = () => {
-  for (let i = 0; i < effectQueue.length; i++) {
-    // eslint-disable-next-line no-use-before-define
-    ensureIsClean(effectQueue[i]!);
-  }
-  effectQueue.length = 0;
-  let reaction: Reaction;
-  for (let i = 0; i < teardownQueue.length; i++) {
-    reaction = teardownQueue[i]!;
-    if (!(parentsSymbol in reaction || effectSymbol in reaction)) {
-      removeFromChildren(reaction, 0);
-      delete reaction[stateSymbol];
-      delete reaction[childrenSymbol];
+const maybeProcessQueues = () => {
+  if (!processingQueues) {
+    processingQueues = true;
+    for (let i = 0; i < effectQueue.length; i++) {
+      // eslint-disable-next-line no-use-before-define
+      ensureIsClean(effectQueue[i]!);
     }
+    effectQueue.length = 0;
+    let reaction: Reaction;
+    for (let i = 0; i < teardownQueue.length; i++) {
+      reaction = teardownQueue[i]!;
+      if (!(parentsSymbol in reaction || effectSymbol in reaction)) {
+        removeFromChildren(reaction, 0);
+        delete reaction[stateSymbol];
+        delete reaction[childrenSymbol];
+      }
+    }
+    teardownQueue.length = 0;
+    processingQueues = false;
   }
-  teardownQueue.length = 0;
 };
 
 export const push: {
@@ -172,11 +176,7 @@ export const push: {
       pushReaction(parents[i]!, dirtyReactionState);
     }
   }
-  if (!processingQueues) {
-    processingQueues = true;
-    processQueues();
-    processingQueues = false;
-  }
+  maybeProcessQueues();
 };
 
 const runReaction = (reaction: Reaction) => {
@@ -287,7 +287,7 @@ export const createEffect: {
   if (reaction[effectSymbol] === 1) {
     effectQueue.push(reaction);
   }
-  processQueues();
+  maybeProcessQueues();
   return () => {
     if (disposed) {
       return;

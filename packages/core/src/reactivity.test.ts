@@ -30,18 +30,15 @@ test("flag", () => {
   });
   createEffect(
     logFunction("c", () => {
-      pull(a);
+      pull(b);
     })
   );
-  // TODO: fix
   expect(readLog()).toMatchInlineSnapshot(`
     > [c] [call 1]
+    > [b] [call 1]
     > [a] [call 1]
-    > [c] [call 2]
-    > [a] [call 2]
-    > [a] [2] [return] undefined
-    > [c] [2] [return] undefined
     > [a] [1] [return] undefined
+    > [b] [1] [return] undefined
     > [c] [1] [return] undefined
   `);
 });
