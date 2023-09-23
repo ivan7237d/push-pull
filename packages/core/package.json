@@ -14,5 +14,10 @@
     "!**/*.test.*",
     "!**/setupTests.*"
   ],
-  "sideEffects": false
+  "sideEffects": false,
+  "devDependencies": {
+    "@1log/core": "^0.0.5",
+    "@1log/function": "^0.0.9",
+    "@1log/jest": "^0.0.7"
+  }
 }
