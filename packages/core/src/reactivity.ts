@@ -180,12 +180,12 @@ export const push: {
 };
 
 const runReaction = (reaction: Reaction) => {
+  const outerCurrentReaction = currentReaction;
   const outerNewChildren = newChildren;
   const outerUnchangedChildrenCount = unchangedChildrenCount;
-  const outerCurrentReaction = currentReaction;
+  currentReaction = reaction;
   newChildren = undefined as typeof newChildren;
   unchangedChildrenCount = 0;
-  currentReaction = reaction;
   reaction();
   if (newChildren) {
     let children: (Reaction | Subject)[];
@@ -216,9 +216,9 @@ const runReaction = (reaction: Reaction) => {
     reaction[childrenSymbol].length = unchangedChildrenCount;
   }
   reaction[stateSymbol] = cleanReactionState;
+  currentReaction = outerCurrentReaction;
   newChildren = outerNewChildren;
   unchangedChildrenCount = outerUnchangedChildrenCount;
-  currentReaction = outerCurrentReaction;
 };
 
 const ensureIsClean = (reaction: Reaction) => {
