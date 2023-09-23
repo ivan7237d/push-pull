@@ -2,7 +2,7 @@ import { pull, push } from "./reactivity";
 
 export const createSignal = <Value>(
   value: Value
-): readonly [() => Value, (newValue: Value) => void] => {
+): readonly [get: () => Value, set: (newValue: Value) => void] => {
   const subject = {};
   return [
     () => {
