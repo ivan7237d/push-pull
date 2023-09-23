@@ -100,27 +100,30 @@ const pushReaction = (
   reactionState: typeof checkReactionState | typeof dirtyReactionState
 ) => {
   // TODO: handle the case of cyclical dependency?
-  if ((reaction[stateSymbol] ?? dirtyReactionState) < reactionState) {
-    // The reason for the first condition is that if the reaction is "check" or
-    // "dirty", all its ancestors have already been marked as (at least)
-    // "check".
-    if (
-      reaction[stateSymbol] === cleanReactionState &&
-      parentsSymbol in reaction
-    ) {
+  if (reaction[stateSymbol] === cleanReactionState) {
+    if (parentsSymbol in reaction) {
       const parents = reaction[parentsSymbol]!;
       for (let i = 0; i < parents.length; i++) {
         pushReaction(parents[i]!, checkReactionState);
       }
     }
+    if (reaction[effectSymbol]) {
+      effectQueue.push(reaction);
+    }
     if (reactionState === dirtyReactionState) {
       delete reaction[stateSymbol];
-      if (reaction[effectSymbol]) {
-        effectQueue.push(reaction);
-      }
     } else {
       reaction[stateSymbol] = reactionState;
     }
+  } else if (
+    reactionState === dirtyReactionState &&
+    // The state is "check".
+    stateSymbol in reaction
+  ) {
+    // If the reaction is in "check" state, all its ancestors have already
+    // been marked as (at least) "check", and if it's an effect, it's been added
+    // to the effect queue.
+    delete reaction[stateSymbol];
   }
 };
 
