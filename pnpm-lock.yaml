@@ -45,11 +45,11 @@ importers:
   packages/core:
     specifiers:
       '@1log/core': ^0.0.5
-      '@1log/function': ^0.0.9
+      '@1log/function': ^0.0.10
       '@1log/jest': ^0.0.7
     devDependencies:
       '@1log/core': 0.0.5
-      '@1log/function': 0.0.9_@1log+core@0.0.5
+      '@1log/function': 0.0.10_@1log+core@0.0.5
       '@1log/jest': 0.0.7_@1log+core@0.0.5
 
 packages:
@@ -58,14 +58,14 @@ packages:
     resolution: {integrity: sha512-CRpYUDrcO0fKYZHcN635fu1Ukac8GWu4VQgWjYwULHdNmtfQEjLpoCjSXXiUz6yks/iKu6WEvCNue974CDAkZA==}
     dev: true
 
-  /@1log/function/0.0.9_@1log+core@0.0.5:
-    resolution: {integrity: sha512-EoXgiDYAPgUKi6XhvVa2vZSiwMq8jDmOfBnEjA16D/K9aXdMkAUVjQNg0T4qBfPUtuVKsfaNIS30m3NDhACyrg==}
+  /@1log/function/0.0.10_@1log+core@0.0.5:
+    resolution: {integrity: sha512-ERNCS9PxOmfyzXl7CQR2Wp0meHOH9PPuXkTZiqg9w8NE8r5yOxIsbGslwIyv/3cHp/aHVPJVVodVxoHFAve3tA==}
     peerDependencies:
       '@1log/core': ^0.0.5
     dependencies:
       '@1log/core': 0.0.5
-      '@1log/promise': 0.0.7_@1log+core@0.0.5
-      antiutils: 4.2.0
+      '@1log/promise': 0.0.8_@1log+core@0.0.5
+      pipe-function: 1.0.0
     dev: true
 
   /@1log/jest/0.0.7_@1log+core@0.0.5:
@@ -77,8 +77,8 @@ packages:
       pipe-function: 1.0.0
     dev: true
 
-  /@1log/promise/0.0.7_@1log+core@0.0.5:
-    resolution: {integrity: sha512-Bo5O9wY4WrsM47aQ5my9qoUelw8MfGHgbtJIUe3Pu0pMlK3whbri+QU1kwp+y8YB5wkKPdrJJu3QWTR/hBOhDQ==}
+  /@1log/promise/0.0.8_@1log+core@0.0.5:
+    resolution: {integrity: sha512-VKDa5XvHh9rm1hCih0joojxQ+HLzEh/uB6VQyaVduGAKhyeFzsAzRdqOii60FKPqkyO5X+LSE+rTCgugMw7aIw==}
     peerDependencies:
       '@1log/core': ^0.0.5
     dependencies:
@@ -2026,10 +2026,6 @@ packages:
   /ansi-styles/5.2.0:
     resolution: {integrity: sha512-Cxwpt2SfTzTtXcfOlzGEee8O+c+MmUgGrNiBcXnuWxuFJHe6a5Hz7qwhwe5OgaSYI0IJvkLqWX1ASG+cJOkEiA==}
     engines: {node: '>=10'}
-    dev: true
-
-  /antiutils/4.2.0:
-    resolution: {integrity: sha512-cjUsLJ+NSww290/WOTiSX5sADQ1Ljf9fRV4s8zqlRu5T3YJ7wTnJkcoQpHMKS1GvBM9hiBSgPZ9fT72pcATbgQ==}
     dev: true
 
   /anymatch/3.1.3:
