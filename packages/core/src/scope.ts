@@ -14,7 +14,7 @@ interface Scope {
 
 let currentScope: Scope | undefined;
 
-export const getScope = (): Scope | undefined => currentScope;
+export const getCurrentScope = (): Scope | undefined => currentScope;
 
 export const createScope = (
   err?: (error: unknown) => void,
