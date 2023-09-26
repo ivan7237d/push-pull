@@ -14,30 +14,33 @@ interface Scope {
 
 let currentScope: Scope | undefined;
 
-export const getScope = () => currentScope;
+export const getScope = (): Scope | undefined => currentScope;
 
-export const createScope = (err?: (error: unknown) => void): Scope => {
-  const scope: Scope = {};
-  if (currentScope) {
-    scope[parentSymbol] = currentScope;
-    scope[previousSiblingSymbol] = currentScope;
-    if (currentScope[nextSiblingSymbol]) {
-      currentScope[nextSiblingSymbol][previousSiblingSymbol] = scope;
-      scope[nextSiblingSymbol] = currentScope[nextSiblingSymbol];
+export const createScope = (
+  err?: (error: unknown) => void,
+  scope: Scope | undefined = currentScope
+): Scope => {
+  const newScope: Scope = {};
+  if (scope) {
+    newScope[parentSymbol] = scope;
+    newScope[previousSiblingSymbol] = scope;
+    if (scope[nextSiblingSymbol]) {
+      scope[nextSiblingSymbol][previousSiblingSymbol] = newScope;
+      newScope[nextSiblingSymbol] = scope[nextSiblingSymbol];
     }
-    currentScope[nextSiblingSymbol] = scope;
+    scope[nextSiblingSymbol] = newScope;
   }
   if (err) {
-    scope[errSymbol] = err;
+    newScope[errSymbol] = err;
   }
-  return scope;
+  return newScope;
 };
 
 export const getContext = <Key extends keyof Scope, DefaultValue = undefined>(
   key: Key,
-  defaultValue?: DefaultValue
+  defaultValue?: DefaultValue,
+  scope: Scope | undefined = currentScope
 ): Scope[Key] | DefaultValue => {
-  let scope = currentScope;
   while (scope) {
     if (key in scope) {
       return scope[key];
@@ -47,21 +50,31 @@ export const getContext = <Key extends keyof Scope, DefaultValue = undefined>(
   return defaultValue;
 };
 
-export const runInScope = <T>(callback: () => T, scope?: Scope): T => {
+export const errScope = (
+  error: unknown,
+  scope: Scope | undefined = currentScope
+): void => {
+  const err = getContext(errSymbol, undefined, scope);
+  if (err) {
+    err(error);
+  } else {
+    queueMicrotask(() => {
+      throw error;
+    });
+  }
+};
+
+export const runInScope = <T>(
+  callback: () => T,
+  scope: Scope | undefined
+): T => {
   const outerScope = currentScope;
   currentScope = scope;
   if (scope && (errSymbol in scope || scope[parentSymbol] !== outerScope)) {
     try {
       return callback();
     } catch (error) {
-      const err = getContext(errSymbol);
-      if (err) {
-        err(error);
-      } else {
-        queueMicrotask(() => {
-          throw error;
-        });
-      }
+      errScope(scope);
     } finally {
       currentScope = outerScope;
     }
@@ -73,29 +86,28 @@ export const runInScope = <T>(callback: () => T, scope?: Scope): T => {
   }
 };
 
-export const createDisposable = (disposable: () => {}) => {
-  if (!currentScope) {
+export const createDisposable: {
+  (disposable: () => {}, scope?: Scope): void;
+} = (disposable: () => {}, scope: Scope | undefined = currentScope) => {
+  if (!scope) {
     throw new Error("Disposables can only be created within a Scope.");
   }
-  if (disposablesSymbol in currentScope) {
-    if (Array.isArray(currentScope[disposablesSymbol])) {
-      currentScope[disposablesSymbol].push(disposable);
+  if (disposablesSymbol in scope) {
+    if (Array.isArray(scope[disposablesSymbol])) {
+      scope[disposablesSymbol].push(disposable);
     } else {
-      currentScope[disposablesSymbol] = [
-        currentScope[disposablesSymbol],
-        disposable,
-      ];
+      scope[disposablesSymbol] = [scope[disposablesSymbol], disposable];
     }
   } else {
-    currentScope[disposablesSymbol] = disposable;
+    scope[disposablesSymbol] = disposable;
   }
 };
 
-export const dispose = (scope: Scope) => {
+export const disposeScope = (scope: Scope): void => {
   const head = scope[previousSiblingSymbol];
   let current = scope[nextSiblingSymbol];
   while (current && current[parentSymbol] === scope) {
-    dispose(current);
+    disposeScope(current);
     current = current[nextSiblingSymbol];
   }
 
