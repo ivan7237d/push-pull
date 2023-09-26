@@ -4,15 +4,15 @@ const voidSymbol = Symbol("void");
 
 export const createMemo = <Value>(get: () => Value): (() => Value) => {
   let value: typeof voidSymbol | Value = voidSymbol;
-  const reaction = () => {
+  const update = () => {
     const newValue = get();
     if (newValue !== value) {
       value = newValue;
-      push(reaction);
+      push(update);
     }
   };
   return (): Value => {
-    pull(reaction);
+    pull(update);
     return value as Value;
   };
 };
