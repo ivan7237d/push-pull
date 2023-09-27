@@ -64,25 +64,26 @@ export const errScope = (
   }
 };
 
-export const runInScope = <T>(
-  callback: () => T,
+export const runInScope = (
+  callback: () => void,
   scope: Scope | undefined
-): T => {
+): void => {
   const outerScope = currentScope;
   currentScope = scope;
   if (scope && (errSymbol in scope || scope[parentSymbol] !== outerScope)) {
     try {
-      return callback();
+      callback();
     } catch (error) {
       errScope(scope);
     } finally {
       currentScope = outerScope;
     }
-  }
-  try {
-    return callback();
-  } finally {
-    currentScope = outerScope;
+  } else {
+    try {
+      callback();
+    } finally {
+      currentScope = outerScope;
+    }
   }
 };
 
