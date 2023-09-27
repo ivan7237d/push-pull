@@ -1,5 +1,11 @@
 import { readLog } from "@1log/jest";
-import { createScope, errScope, getContext, runInScope } from "./scope";
+import {
+  createScope,
+  errScope,
+  getContext,
+  isAncestorScope,
+  runInScope,
+} from "./scope";
 import { logFunction, nameSymbol } from "./setupTests";
 
 const contextKeySymbol1 = Symbol("contextKey1");
@@ -31,7 +37,7 @@ declare module "./scope" {
   }
 }
 
-test("create scope", () => {
+test("createScope", () => {
   // $ExpectType Scope
   const a = createScope();
   (a as any)[nameSymbol] = "a";
@@ -82,7 +88,16 @@ test("create scope", () => {
   `);
 });
 
-test("context", () => {
+test("isAncestorScope", () => {
+  const a = createScope();
+  const b = createScope(undefined, a);
+  const c = createScope(undefined, b);
+  expect(isAncestorScope(a, c)).toMatchInlineSnapshot(`true`);
+  expect(isAncestorScope(a, a)).toMatchInlineSnapshot(`true`);
+  expect(isAncestorScope(c, a)).toMatchInlineSnapshot(`false`);
+});
+
+test("getContext", () => {
   const a = createScope();
   const b = createScope(undefined, a);
   const c = createScope(undefined, b);
@@ -126,7 +141,7 @@ test("context", () => {
   }, c);
 });
 
-test("err scope", () => {
+test("errScope", () => {
   const a = createScope();
   const b = createScope(
     logFunction("error handler for scope b", () => {}),

@@ -36,6 +36,23 @@ export const createScope = (
   return newScope;
 };
 
+/**
+ * This is a weak operator, meaning that a scope is considered an ancestor of
+ * itself.
+ */
+export const isAncestorScope = (
+  maybeAncestor: Scope,
+  maybeDescendant: Scope
+): boolean => {
+  while (maybeDescendant as Scope | undefined) {
+    if (maybeDescendant === maybeAncestor) {
+      return true;
+    }
+    (maybeDescendant as Scope | undefined) = maybeDescendant[parentSymbol];
+  }
+  return false;
+};
+
 export const getContext = <Key extends keyof Scope, DefaultValue = undefined>(
   key: Key,
   defaultValue?: DefaultValue,
