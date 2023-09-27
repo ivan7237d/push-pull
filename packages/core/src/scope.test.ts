@@ -1,10 +1,29 @@
-import { createScope, getContext, runInScope } from "./scope";
-import { nameSymbol } from "./setupTests";
+import { readLog } from "@1log/jest";
+import { createScope, errScope, getContext, runInScope } from "./scope";
+import { logFunction, nameSymbol } from "./setupTests";
 
 const contextKeySymbol1 = Symbol("contextKey1");
 const contextKeySymbol2 = Symbol("contextKey2");
 
-// This is used for type tests in test("context", ...).
+const mockMicrotaskQueue: (() => void)[] = [];
+const originalQueueMicrotask = queueMicrotask;
+
+const processMockMicrotaskQueue = () => {
+  while (mockMicrotaskQueue.length) {
+    mockMicrotaskQueue.shift()!();
+  }
+};
+
+beforeEach(() => {
+  global.queueMicrotask = (task) => mockMicrotaskQueue.push(task);
+});
+
+afterEach(() => {
+  processMockMicrotaskQueue();
+  global.queueMicrotask = originalQueueMicrotask;
+});
+
+// This is used for type tests in `test("context", ...)`.
 declare module "./scope" {
   interface Scope {
     [contextKeySymbol1]?: number;
@@ -75,7 +94,15 @@ test("context", () => {
   ).toMatchInlineSnapshot(`undefined`);
   expect(
     // $ExpectType number | undefined
+    getContext(contextKeySymbol2)
+  ).toMatchInlineSnapshot(`undefined`);
+  expect(
+    // $ExpectType number | undefined
     getContext(contextKeySymbol1, undefined)
+  ).toMatchInlineSnapshot(`undefined`);
+  expect(
+    // $ExpectType number | undefined
+    getContext(contextKeySymbol2, undefined)
   ).toMatchInlineSnapshot(`undefined`);
   expect(
     // $ExpectType number | "a"
@@ -97,4 +124,51 @@ test("context", () => {
   runInScope(() => {
     expect(getContext(contextKeySymbol1)).toMatchInlineSnapshot(`2`);
   }, c);
+});
+
+test("err scope", () => {
+  const a = createScope();
+  const b = createScope(
+    logFunction("error handler for scope b", () => {}),
+    a
+  );
+  const c = createScope(
+    logFunction("error handler for scope c", () => {}),
+    b
+  );
+  const d = createScope(undefined, b);
+
+  errScope("oops1");
+  expect(processMockMicrotaskQueue).toThrow("oops1");
+  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
+
+  errScope("oops2", a);
+  expect(processMockMicrotaskQueue).toThrow("oops2");
+  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
+
+  errScope("oops3", b);
+  expect(readLog()).toMatchInlineSnapshot(`
+    > [error handler for scope b] [call 1] "oops3"
+    > [error handler for scope b] [1] [return] undefined
+  `);
+
+  errScope("oops4", c);
+  expect(readLog()).toMatchInlineSnapshot(`
+    > [error handler for scope c] [call 1] "oops4"
+    > [error handler for scope c] [1] [return] undefined
+  `);
+
+  errScope("oops5", d);
+  expect(readLog()).toMatchInlineSnapshot(`
+    > [error handler for scope b] [call 2] "oops5"
+    > [error handler for scope b] [2] [return] undefined
+  `);
+
+  runInScope(() => {
+    errScope("oops6");
+  }, d);
+  expect(readLog()).toMatchInlineSnapshot(`
+    > [error handler for scope b] [call 3] "oops6"
+    > [error handler for scope b] [3] [return] undefined
+  `);
 });
