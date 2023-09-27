@@ -4,7 +4,7 @@ const nextSiblingSymbol = Symbol("nextSibling");
 const disposablesSymbol = Symbol("disposables");
 const errSymbol = Symbol("err");
 
-interface Scope {
+export interface Scope {
   [parentSymbol]?: Scope;
   [previousSiblingSymbol]?: Scope;
   [nextSiblingSymbol]?: Scope;
@@ -40,14 +40,14 @@ export const getContext = <Key extends keyof Scope, DefaultValue = undefined>(
   key: Key,
   defaultValue?: DefaultValue,
   scope: Scope | undefined = currentScope
-): Scope[Key] | DefaultValue => {
+): Required<Scope>[Key] | DefaultValue => {
   while (scope) {
     if (key in scope) {
-      return scope[key];
+      return scope[key] as Required<Scope>[Key];
     }
     scope = scope[parentSymbol];
   }
-  return defaultValue;
+  return defaultValue as DefaultValue;
 };
 
 export const errScope = (
