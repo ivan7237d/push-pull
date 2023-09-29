@@ -124,8 +124,8 @@ export const runInScope = (
 };
 
 export const createDisposable: {
-  (disposable: () => {}, scope?: Scope): void;
-} = (disposable: () => {}, scope: Scope | undefined = currentScope) => {
+  (disposable: () => void, scope?: Scope): void;
+} = (disposable: () => void, scope: Scope | undefined = currentScope) => {
   if (!scope) {
     throw new Error("Disposables can only be created within a Scope.");
   }

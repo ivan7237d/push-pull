@@ -1,7 +1,9 @@
 import { label } from "@1log/core";
 import { readLog } from "@1log/jest";
 import {
+  createDisposable,
   createScope,
+  disposeScope,
   errScope,
   getContext,
   isAncestorScope,
@@ -243,3 +245,28 @@ test("runInScope", () => {
   }, b);
   expect(processMockMicrotaskQueue).toThrow("oops4");
 });
+
+test("createDisposable", () => {
+  expect(() => createDisposable(() => {})).toThrowErrorMatchingInlineSnapshot(
+    `"Disposables can only be created within a Scope."`
+  );
+
+  const a = createScope();
+  createDisposable(log.add(label("disposable 1")), a);
+  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
+  disposeScope(a);
+  expect(readLog()).toMatchInlineSnapshot(`> [disposable 1]`);
+
+  runInScope(() => {
+    createDisposable(log.add(label("disposable 2")));
+    createDisposable(log.add(label("disposable 3")));
+  }, a);
+  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
+  disposeScope(a);
+  expect(readLog()).toMatchInlineSnapshot(`
+    > [disposable 2]
+    > [disposable 3]
+  `);
+});
+
+test("disposeScope", () => {});
