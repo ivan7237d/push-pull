@@ -100,21 +100,25 @@ export const runInScope = (
   callback: () => void,
   scope: Scope | undefined
 ): void => {
-  const outerScope = currentScope;
-  currentScope = scope;
-  if (scope && (errSymbol in scope || scope[parentSymbol] !== outerScope)) {
-    try {
-      callback();
-    } catch (error) {
-      errScope(error, scope);
-    } finally {
-      currentScope = outerScope;
-    }
+  if (currentScope === scope) {
+    callback();
   } else {
-    try {
-      callback();
-    } finally {
-      currentScope = outerScope;
+    const outerScope = currentScope;
+    currentScope = scope;
+    if (scope && (errSymbol in scope || scope[parentSymbol] !== outerScope)) {
+      try {
+        callback();
+      } catch (error) {
+        errScope(error, scope);
+      } finally {
+        currentScope = outerScope;
+      }
+    } else {
+      try {
+        callback();
+      } finally {
+        currentScope = outerScope;
+      }
     }
   }
 };

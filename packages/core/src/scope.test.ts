@@ -10,8 +10,8 @@ import {
 } from "./scope";
 import { log, nameSymbol } from "./setupTests";
 
-const contextKeySymbol1 = Symbol("contextKey1");
-const contextKeySymbol2 = Symbol("contextKey2");
+const contextKey1 = Symbol("contextKey1");
+const contextKey2 = Symbol("contextKey2");
 
 const mockMicrotaskQueue: (() => void)[] = [];
 const originalQueueMicrotask = queueMicrotask;
@@ -34,8 +34,8 @@ afterEach(() => {
 // This is used for type tests in `test("context", ...)`.
 declare module "./scope" {
   interface Scope {
-    [contextKeySymbol1]?: number;
-    [contextKeySymbol2]?: number | undefined;
+    [contextKey1]?: number;
+    [contextKey2]?: number | undefined;
   }
 }
 
@@ -116,43 +116,39 @@ test("getContext", () => {
   const a = createScope();
   const b = createScope(undefined, a);
   const c = createScope(undefined, b);
-  b[contextKeySymbol1] = 1;
-  c[contextKeySymbol1] = 2;
+  b[contextKey1] = 1;
+  c[contextKey1] = 2;
   expect(
     // $ExpectType number | undefined
-    getContext(contextKeySymbol1)
+    getContext(contextKey1)
   ).toMatchInlineSnapshot(`undefined`);
   expect(
     // $ExpectType number | undefined
-    getContext(contextKeySymbol2)
+    getContext(contextKey2)
   ).toMatchInlineSnapshot(`undefined`);
   expect(
     // $ExpectType number | undefined
-    getContext(contextKeySymbol1, undefined)
+    getContext(contextKey1, undefined)
   ).toMatchInlineSnapshot(`undefined`);
   expect(
     // $ExpectType number | undefined
-    getContext(contextKeySymbol2, undefined)
+    getContext(contextKey2, undefined)
   ).toMatchInlineSnapshot(`undefined`);
   expect(
     // $ExpectType number | "a"
-    getContext(contextKeySymbol1, "a")
+    getContext(contextKey1, "a")
   ).toMatchInlineSnapshot(`"a"`);
   expect(
     // $ExpectType number | "a" | undefined
-    getContext(contextKeySymbol2, "a")
+    getContext(contextKey2, "a")
   ).toMatchInlineSnapshot(`"a"`);
-  expect(getContext(contextKeySymbol1, undefined, a)).toMatchInlineSnapshot(
+  expect(getContext(contextKey1, undefined, a)).toMatchInlineSnapshot(
     `undefined`
   );
-  expect(getContext(contextKeySymbol1, undefined, b)).toMatchInlineSnapshot(
-    `1`
-  );
-  expect(getContext(contextKeySymbol1, undefined, c)).toMatchInlineSnapshot(
-    `2`
-  );
+  expect(getContext(contextKey1, undefined, b)).toMatchInlineSnapshot(`1`);
+  expect(getContext(contextKey1, undefined, c)).toMatchInlineSnapshot(`2`);
   runInScope(() => {
-    expect(getContext(contextKeySymbol1)).toMatchInlineSnapshot(`2`);
+    expect(getContext(contextKey1)).toMatchInlineSnapshot(`2`);
   }, c);
 });
 
@@ -194,38 +190,48 @@ test("errScope", () => {
 });
 
 test("runInScope", () => {
+  // If the provided scope is the same as the current scope, just run the
+  // callback.
+  expect(() => {
+    runInScope(() => {
+      throw "oops1";
+    }, undefined);
+  }).toThrow("oops1");
+
   const a = createScope();
-  a[contextKeySymbol1] = 1;
+  a[contextKey1] = 1;
   runInScope(() => {
-    expect(getContext(contextKeySymbol1)).toMatchInlineSnapshot(`1`);
+    expect(getContext(contextKey1)).toMatchInlineSnapshot(`1`);
   }, a);
   // Make sure the outer context is restored.
-  expect(getContext(contextKeySymbol1)).toMatchInlineSnapshot(`undefined`);
+  expect(getContext(contextKey1)).toMatchInlineSnapshot(`undefined`);
 
   // When there is no error handler and synthetic parent scope is the same as
   // native parent scope, do not catch the error.
   expect(() => {
     runInScope(() => {
-      throw "oops1";
+      throw "oops2";
     }, a);
-  }).toThrow("oops1");
+  }).toThrow("oops2");
 
   // Pass error to this scope's error handler.
   const b = createScope(log.add(label("error handler for scope b")));
   runInScope(() => {
-    throw "oops2";
+    throw "oops3";
   }, b);
   expect(readLog()).toMatchInlineSnapshot(
-    `> [error handler for scope b] "oops2"`
+    `> [error handler for scope b] "oops3"`
   );
+  // Make sure the outer context is restored.
+  expect(getContext(contextKey1)).toMatchInlineSnapshot(`undefined`);
 
   // Pass error to ancestor scope's error handler.
   const c = createScope(undefined, b);
   runInScope(() => {
-    throw "oops3";
+    throw "oops4";
   }, c);
   expect(readLog()).toMatchInlineSnapshot(
-    `> [error handler for scope b] "oops3"`
+    `> [error handler for scope b] "oops4"`
   );
 
   // When there is no error handler but synthetic and native parent scopes do
