@@ -56,13 +56,10 @@ const childrenSymbol = Symbol("children");
 const stateSymbol = Symbol("state");
 const effectSymbol = Symbol("effect");
 
-const cleanReactionState = 0;
-const checkReactionState = 1;
-const dirtyReactionState = 2;
-type State =
-  | typeof cleanReactionState
-  | typeof checkReactionState
-  | typeof dirtyReactionState;
+const cleanState = 0;
+const checkState = 1;
+const dirtyState = 2;
+type State = typeof cleanState | typeof checkState | typeof dirtyState;
 
 interface Subject {
   // eslint-disable-next-line no-use-before-define
@@ -73,9 +70,9 @@ interface Reaction extends Subject {
   [childrenSymbol]?: (Subject | Reaction)[];
   (): void;
   /**
-   * Absent state means `dirtyReactionState`.
+   * Absent state means `dirtyState`.
    */
-  [stateSymbol]?: Exclude<State, typeof dirtyReactionState>;
+  [stateSymbol]?: Exclude<State, typeof dirtyState>;
   /**
    * A positive integer.
    */
@@ -97,26 +94,26 @@ let processingQueues = false;
 
 const pushReaction = (
   reaction: Reaction,
-  reactionState: typeof checkReactionState | typeof dirtyReactionState
+  state: typeof checkState | typeof dirtyState
 ) => {
   // TODO: handle the case of cyclical dependency?
-  if (reaction[stateSymbol] === cleanReactionState) {
+  if (reaction[stateSymbol] === cleanState) {
     if (parentsSymbol in reaction) {
       const parents = reaction[parentsSymbol]!;
       for (let i = 0; i < parents.length; i++) {
-        pushReaction(parents[i]!, checkReactionState);
+        pushReaction(parents[i]!, checkState);
       }
     }
     if (reaction[effectSymbol]) {
       effectQueue.push(reaction);
     }
-    if (reactionState === dirtyReactionState) {
+    if (state === dirtyState) {
       delete reaction[stateSymbol];
     } else {
-      reaction[stateSymbol] = reactionState;
+      reaction[stateSymbol] = state;
     }
   } else if (
-    reactionState === dirtyReactionState &&
+    state === dirtyState &&
     // The state is "check".
     stateSymbol in reaction
   ) {
@@ -176,7 +173,7 @@ export const push: {
   if (parentsSymbol in subject) {
     const parents = subject[parentsSymbol]!;
     for (let i = 0; i < parents.length; i++) {
-      pushReaction(parents[i]!, dirtyReactionState);
+      pushReaction(parents[i]!, dirtyState);
     }
   }
   maybeProcessQueues();
@@ -218,20 +215,20 @@ const runReaction = (reaction: Reaction) => {
     removeFromChildren(reaction, unchangedChildrenCount);
     reaction[childrenSymbol].length = unchangedChildrenCount;
   }
-  reaction[stateSymbol] = cleanReactionState;
+  reaction[stateSymbol] = cleanState;
   currentReaction = outerCurrentReaction;
   newChildren = outerNewChildren;
   unchangedChildrenCount = outerUnchangedChildrenCount;
 };
 
 const ensureIsClean = (reaction: Reaction) => {
-  if (reaction[stateSymbol] === cleanReactionState) {
+  if (reaction[stateSymbol] === cleanState) {
     return;
   }
   // In this case we don't know if the reaction needs to be run, but by
   // recursively calling `ensureIsClean` for children, we'll eventually know one
   // way or the other.
-  if (reaction[stateSymbol] === checkReactionState) {
+  if (reaction[stateSymbol] === checkState) {
     const children = reaction[childrenSymbol]!;
     let child: Subject | Reaction;
     for (let i = 0; i < children.length; i++) {
@@ -251,7 +248,7 @@ const ensureIsClean = (reaction: Reaction) => {
   } else {
     // At this point we know that all children are clean, so we can mark the
     // reaction as clean.
-    reaction[stateSymbol] = cleanReactionState;
+    reaction[stateSymbol] = cleanState;
   }
 };
 
