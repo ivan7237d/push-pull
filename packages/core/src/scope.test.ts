@@ -10,7 +10,7 @@ import {
   isDescendantScope,
   runInScope,
 } from "./scope";
-import { log, nameSymbol } from "./setupTests";
+import { getNumberedString, log, nameSymbol } from "./setupTests";
 
 const contextKey1 = Symbol("contextKey1");
 const contextKey2 = Symbol("contextKey2");
@@ -181,46 +181,59 @@ test("errScope", () => {
   const b = createScope(log.add(label("error handler for scope b")), a);
   const c = createScope(log.add(label("error handler for scope c")), b);
   const d = createScope(undefined, b);
+  const nextOops = getNumberedString("oops");
+  let oops: string;
 
-  errScope("oops1");
+  expect((oops = nextOops())).toMatchInlineSnapshot(`"oops1"`);
+  errScope(oops);
   expect(processMockMicrotaskQueue).toThrow("oops1");
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
 
-  errScope("oops2", a);
+  expect((oops = nextOops())).toMatchInlineSnapshot(`"oops2"`);
+  errScope(oops, a);
   expect(processMockMicrotaskQueue).toThrow("oops2");
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
 
-  errScope("oops3", b);
+  expect((oops = nextOops())).toMatchInlineSnapshot(`"oops3"`);
+  errScope(oops, b);
   expect(readLog()).toMatchInlineSnapshot(
     `> [error handler for scope b] "oops3"`
   );
 
-  errScope("oops4", c);
+  expect((oops = nextOops())).toMatchInlineSnapshot(`"oops4"`);
+  errScope(oops, c);
   expect(readLog()).toMatchInlineSnapshot(
     `> [error handler for scope c] "oops4"`
   );
 
-  errScope("oops5", d);
+  expect((oops = nextOops())).toMatchInlineSnapshot(`"oops5"`);
+  errScope(oops, d);
   expect(readLog()).toMatchInlineSnapshot(
     `> [error handler for scope b] "oops5"`
   );
 
+  expect((oops = nextOops())).toMatchInlineSnapshot(`"oops6"`);
   runInScope(() => {
-    errScope("oops6");
+    errScope(oops);
   }, d);
   expect(readLog()).toMatchInlineSnapshot(
     `> [error handler for scope b] "oops6"`
   );
 
+  expect((oops = nextOops())).toMatchInlineSnapshot(`"oops7"`);
   disposeScope(c);
-  expect(() => errScope("oops7", c)).toThrowErrorMatchingInlineSnapshot(
+  expect(() => errScope(oops, c)).toThrowErrorMatchingInlineSnapshot(
     `"The scope is expected to not be in disposed state."`
   );
 });
 
 test("runInScope", () => {
+  const nextOops = getNumberedString("oops");
+  let oops: string;
+
   // If the provided scope is the same as the current scope, just run the
   // callback.
+  expect((oops = nextOops())).toMatchInlineSnapshot(`"oops1"`);
   expect(() => {
     runInScope(() => {
       throw "oops1";
@@ -237,16 +250,18 @@ test("runInScope", () => {
 
   // When there is no error handler and synthetic parent scope is the same as
   // native parent scope, do not catch the error.
+  expect((oops = nextOops())).toMatchInlineSnapshot(`"oops2"`);
   expect(() => {
     runInScope(() => {
-      throw "oops2";
+      throw oops;
     }, a);
   }).toThrow("oops2");
 
   // Pass error to this scope's error handler.
   const b = createScope(log.add(label("error handler for scope b")));
+  expect((oops = nextOops())).toMatchInlineSnapshot(`"oops3"`);
   runInScope(() => {
-    throw "oops3";
+    throw oops;
   }, b);
   expect(readLog()).toMatchInlineSnapshot(
     `> [error handler for scope b] "oops3"`
@@ -256,8 +271,9 @@ test("runInScope", () => {
 
   // Pass error to ancestor scope's error handler.
   const c = createScope(undefined, b);
+  expect((oops = nextOops())).toMatchInlineSnapshot(`"oops4"`);
   runInScope(() => {
-    throw "oops4";
+    throw oops;
   }, c);
   expect(readLog()).toMatchInlineSnapshot(
     `> [error handler for scope b] "oops4"`
@@ -265,12 +281,13 @@ test("runInScope", () => {
 
   // When there is no error handler but synthetic and native parent scopes do
   // not match, throw in a microtask.
+  expect((oops = nextOops())).toMatchInlineSnapshot(`"oops5"`);
   runInScope(() => {
     runInScope(() => {
-      throw "oops4";
+      throw oops;
     }, a);
   }, b);
-  expect(processMockMicrotaskQueue).toThrow("oops4");
+  expect(processMockMicrotaskQueue).toThrow("oops5");
 
   disposeScope(c);
   expect(() => runInScope(() => {}, c)).toThrowErrorMatchingInlineSnapshot(

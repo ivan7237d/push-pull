@@ -40,3 +40,11 @@ expect.addSnapshotSerializer({
     }]`;
   },
 });
+
+/**
+ * Returns a function that returns "<base>1", "<base>2", etc.
+ */
+export const getNumberedString = (base: string) => {
+  let index = 0;
+  return () => `${base}${++index}`;
+};
