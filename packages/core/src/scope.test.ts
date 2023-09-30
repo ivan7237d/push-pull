@@ -92,6 +92,11 @@ test("createScope", () => {
       Symbol(name): "c",
     }
   `);
+
+  disposeScope(c);
+  expect(() => createScope(undefined, c)).toThrowErrorMatchingInlineSnapshot(
+    `"The scope is expected to not be in disposed state."`
+  );
 });
 
 test("isAncestorScope, isDescendantScope", () => {
@@ -112,6 +117,16 @@ test("isAncestorScope, isDescendantScope", () => {
     expect(isAncestorScope(c)).toMatchInlineSnapshot(`false`);
     expect(isDescendantScope(c)).toMatchInlineSnapshot(`true`);
   }, b);
+
+  disposeScope(c);
+  expect(() => isAncestorScope(a, c)).toThrowErrorMatchingInlineSnapshot(
+    `"The scope is expected to not be in disposed state."`
+  );
+  expect(isAncestorScope(c, a)).toMatchInlineSnapshot(`false`);
+  expect(() => isDescendantScope(c, a)).toThrowErrorMatchingInlineSnapshot(
+    `"The scope is expected to not be in disposed state."`
+  );
+  expect(isDescendantScope(a, c)).toMatchInlineSnapshot(`false`);
 });
 
 test("getContext", () => {
@@ -152,6 +167,13 @@ test("getContext", () => {
   runInScope(() => {
     expect(getContext(contextKey1)).toMatchInlineSnapshot(`2`);
   }, c);
+
+  disposeScope(c);
+  expect(() =>
+    getContext(contextKey1, undefined, c)
+  ).toThrowErrorMatchingInlineSnapshot(
+    `"The scope is expected to not be in disposed state."`
+  );
 });
 
 test("errScope", () => {
@@ -188,6 +210,11 @@ test("errScope", () => {
   }, d);
   expect(readLog()).toMatchInlineSnapshot(
     `> [error handler for scope b] "oops6"`
+  );
+
+  disposeScope(c);
+  expect(() => errScope("oops7", c)).toThrowErrorMatchingInlineSnapshot(
+    `"The scope is expected to not be in disposed state."`
   );
 });
 
@@ -244,11 +271,16 @@ test("runInScope", () => {
     }, a);
   }, b);
   expect(processMockMicrotaskQueue).toThrow("oops4");
+
+  disposeScope(c);
+  expect(() => runInScope(() => {}, c)).toThrowErrorMatchingInlineSnapshot(
+    `"The scope is expected to not be in disposed state."`
+  );
 });
 
 test("createDisposable", () => {
   expect(() => createDisposable(() => {})).toThrowErrorMatchingInlineSnapshot(
-    `"Disposables can only be created within a Scope."`
+    `"Disposables can only be created within a scope."`
   );
 
   const a = createScope();
@@ -257,16 +289,21 @@ test("createDisposable", () => {
   disposeScope(a);
   expect(readLog()).toMatchInlineSnapshot(`> [disposable 1]`);
 
+  const b = createScope();
   runInScope(() => {
     createDisposable(log.add(label("disposable 2")));
     createDisposable(log.add(label("disposable 3")));
-  }, a);
+  }, b);
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
-  disposeScope(a);
+  disposeScope(b);
   expect(readLog()).toMatchInlineSnapshot(`
     > [disposable 2]
     > [disposable 3]
   `);
+
+  expect(() => disposeScope(b)).toThrowErrorMatchingInlineSnapshot(
+    `"The scope is expected to not be in disposed state."`
+  );
 });
 
 test("disposeScope", () => {});

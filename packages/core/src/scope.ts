@@ -2,6 +2,7 @@ const parentSymbol = Symbol("parent");
 const previousSiblingSymbol = Symbol("previousSibling");
 const nextSiblingSymbol = Symbol("nextSibling");
 const disposablesSymbol = Symbol("disposables");
+const disposedSymbol = Symbol("disposed");
 const errSymbol = Symbol("err");
 
 export interface Scope {
@@ -9,15 +10,25 @@ export interface Scope {
   [previousSiblingSymbol]?: Scope;
   [nextSiblingSymbol]?: Scope;
   [disposablesSymbol]?: (() => void) | (() => void)[];
+  [disposedSymbol]?: true;
   [errSymbol]?: (error: unknown) => void;
 }
 
 let currentScope: Scope | undefined;
 
+const assertScopeNotDisposed = (scope: Scope) => {
+  if (disposedSymbol in scope) {
+    throw new Error("The scope is expected to not be in disposed state.");
+  }
+};
+
 export const createScope = (
   err?: (error: unknown) => void,
   scope: Scope | undefined = currentScope
 ): Scope => {
+  if (scope) {
+    assertScopeNotDisposed(scope);
+  }
   const newScope: Scope = {};
   if (scope) {
     newScope[parentSymbol] = scope;
@@ -42,6 +53,9 @@ export const isAncestorScope = (
   maybeAncestor: Scope | undefined,
   scope: Scope | undefined = currentScope
 ): boolean => {
+  if (scope) {
+    assertScopeNotDisposed(scope);
+  }
   while (scope !== maybeAncestor) {
     if (!scope) {
       return false;
@@ -59,6 +73,9 @@ export const isDescendantScope = (
   maybeDescendant: Scope | undefined,
   scope: Scope | undefined = currentScope
 ): boolean => {
+  if (maybeDescendant) {
+    assertScopeNotDisposed(maybeDescendant);
+  }
   while (scope !== maybeDescendant) {
     if (!maybeDescendant) {
       return false;
@@ -73,6 +90,9 @@ export const getContext = <Key extends keyof Scope, DefaultValue = undefined>(
   defaultValue?: DefaultValue,
   scope: Scope | undefined = currentScope
 ): Required<Scope>[Key] | DefaultValue => {
+  if (scope) {
+    assertScopeNotDisposed(scope);
+  }
   while (scope) {
     if (key in scope) {
       return scope[key] as Required<Scope>[Key];
@@ -86,6 +106,9 @@ export const errScope = (
   error: unknown,
   scope: Scope | undefined = currentScope
 ): void => {
+  if (scope) {
+    assertScopeNotDisposed(scope);
+  }
   const err = getContext(errSymbol, undefined, scope);
   if (err) {
     err(error);
@@ -103,6 +126,9 @@ export const runInScope = (
   if (currentScope === scope) {
     callback();
   } else {
+    if (scope) {
+      assertScopeNotDisposed(scope);
+    }
     const outerScope = currentScope;
     currentScope = scope;
     if (scope && (errSymbol in scope || scope[parentSymbol] !== outerScope)) {
@@ -127,8 +153,9 @@ export const createDisposable: {
   (disposable: () => void, scope?: Scope): void;
 } = (disposable: () => void, scope: Scope | undefined = currentScope) => {
   if (!scope) {
-    throw new Error("Disposables can only be created within a Scope.");
+    throw new Error("Disposables can only be created within a scope.");
   }
+  assertScopeNotDisposed(scope);
   if (disposablesSymbol in scope) {
     if (Array.isArray(scope[disposablesSymbol])) {
       scope[disposablesSymbol].push(disposable);
@@ -140,7 +167,15 @@ export const createDisposable: {
   }
 };
 
+export const isScopeDisposed = (scope: Scope | undefined = currentScope) => {
+  if (scope) {
+    return disposedSymbol in scope;
+  }
+  return false;
+};
+
 export const disposeScope = (scope: Scope): void => {
+  assertScopeNotDisposed(scope);
   const head = scope[previousSiblingSymbol];
   let current = scope[nextSiblingSymbol];
   while (current && current[parentSymbol] === scope) {
@@ -187,4 +222,5 @@ export const disposeScope = (scope: Scope): void => {
       delete head[nextSiblingSymbol];
     }
   }
+  scope[disposedSymbol] = true;
 };
