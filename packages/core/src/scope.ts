@@ -174,24 +174,28 @@ export const isScopeDisposed = (scope: Scope | undefined = currentScope) => {
   return false;
 };
 
-export const disposeScope = (scope: Scope): void => {
-  assertScopeNotDisposed(scope);
-  const head = scope[previousSymbol];
-
-  // Dispose children.
-  let current = scope[nextSymbol];
-  while (current && current[parentSymbol] === scope) {
-    disposeScope(current);
-    current = current[nextSymbol];
-  }
-
-  if (scope[previousSymbol]) {
-    delete scope[previousSymbol][nextSymbol];
-  }
-  delete scope[parentSymbol];
-  delete scope[previousSymbol];
+/**
+ * Unlike `disposeScope`,
+ *
+ * - Expects `scope` to not be disposed (`!(disposedSymbol in scope)`)
+ *
+ * - Does not make changes to the graph
+ *
+ * - Returns the "next" scope from the last scope it traverses
+ */
+const disposeScopeInternal = (scope: Scope): Scope | undefined => {
   scope[disposedSymbol] = true;
+
+  // Dispose descendants.
+  let next = scope[nextSymbol];
+  while (next && next[parentSymbol] === scope) {
+    next = disposeScopeInternal(next);
+  }
+
+  // Call disposables.
   if (scope[disposablesSymbol]) {
+    // We are relying here on the fact that no new disposables can be added to a
+    // scope that we marked as disposed.
     if (Array.isArray(scope[disposablesSymbol])) {
       const disposables = scope[disposablesSymbol];
       for (let i = disposables.length - 1; i >= 0; i--) {
@@ -212,17 +216,26 @@ export const disposeScope = (scope: Scope): void => {
         });
       }
     }
-    delete scope[disposablesSymbol];
   }
 
-  if (current) {
-    delete current[previousSymbol];
-  }
-  if (head) {
-    if (current) {
-      head[nextSymbol] = current;
+  return next;
+};
+
+export const disposeScope = (scope: Scope): void => {
+  assertScopeNotDisposed(scope);
+  const next = disposeScopeInternal(scope);
+  if (scope[previousSymbol]) {
+    if (next) {
+      scope[previousSymbol][nextSymbol] = next;
     } else {
-      delete head[nextSymbol];
+      delete scope[previousSymbol][nextSymbol];
+    }
+  }
+  if (scope[nextSymbol]) {
+    if (scope[previousSymbol]) {
+      scope[nextSymbol][previousSymbol] = scope[previousSymbol];
+    } else {
+      delete scope[nextSymbol][previousSymbol];
     }
   }
 };

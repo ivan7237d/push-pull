@@ -351,6 +351,8 @@ test("disposeScope", () => {
   `);
   expect(b).toMatchInlineSnapshot(`
     {
+      Symbol(parent): [Object a],
+      Symbol(previous): [Object c],
       Symbol(name): "b",
       Symbol(disposed): true,
     }
@@ -375,18 +377,21 @@ test("disposeScope2", () => {
   expect(a).toMatchInlineSnapshot(`
     {
       Symbol(name): "a",
-      Symbol(next): [Object b],
+      Symbol(next): [Object c],
       Symbol(disposed): true,
     }
   `);
   expect(b).toMatchInlineSnapshot(`
     {
+      Symbol(parent): [Object a],
+      Symbol(previous): [Object c],
       Symbol(name): "b",
       Symbol(disposed): true,
     }
   `);
   expect(c).toMatchInlineSnapshot(`
     {
+      Symbol(parent): [Object a],
       Symbol(next): [Object b],
       Symbol(name): "c",
       Symbol(disposed): true,
