@@ -1,14 +1,14 @@
 const parentSymbol = Symbol("parent");
-const previousSiblingSymbol = Symbol("previousSibling");
-const nextSiblingSymbol = Symbol("nextSibling");
+const previousSymbol = Symbol("previous");
+const nextSymbol = Symbol("next");
 const disposablesSymbol = Symbol("disposables");
 const disposedSymbol = Symbol("disposed");
 const errSymbol = Symbol("err");
 
 export interface Scope {
   [parentSymbol]?: Scope;
-  [previousSiblingSymbol]?: Scope;
-  [nextSiblingSymbol]?: Scope;
+  [previousSymbol]?: Scope;
+  [nextSymbol]?: Scope;
   [disposablesSymbol]?: (() => void) | (() => void)[];
   [disposedSymbol]?: true;
   [errSymbol]?: (error: unknown) => void;
@@ -32,12 +32,12 @@ export const createScope = (
   const newScope: Scope = {};
   if (scope) {
     newScope[parentSymbol] = scope;
-    newScope[previousSiblingSymbol] = scope;
-    if (scope[nextSiblingSymbol]) {
-      scope[nextSiblingSymbol][previousSiblingSymbol] = newScope;
-      newScope[nextSiblingSymbol] = scope[nextSiblingSymbol];
+    newScope[previousSymbol] = scope;
+    if (scope[nextSymbol]) {
+      scope[nextSymbol][previousSymbol] = newScope;
+      newScope[nextSymbol] = scope[nextSymbol];
     }
-    scope[nextSiblingSymbol] = newScope;
+    scope[nextSymbol] = newScope;
   }
   if (err) {
     newScope[errSymbol] = err;
@@ -176,20 +176,20 @@ export const isScopeDisposed = (scope: Scope | undefined = currentScope) => {
 
 export const disposeScope = (scope: Scope): void => {
   assertScopeNotDisposed(scope);
-  const head = scope[previousSiblingSymbol];
+  const head = scope[previousSymbol];
 
   // Dispose children.
-  let current = scope[nextSiblingSymbol];
+  let current = scope[nextSymbol];
   while (current && current[parentSymbol] === scope) {
     disposeScope(current);
-    current = current[nextSiblingSymbol];
+    current = current[nextSymbol];
   }
 
-  if (scope[previousSiblingSymbol]) {
-    delete scope[previousSiblingSymbol][nextSiblingSymbol];
+  if (scope[previousSymbol]) {
+    delete scope[previousSymbol][nextSymbol];
   }
   delete scope[parentSymbol];
-  delete scope[previousSiblingSymbol];
+  delete scope[previousSymbol];
   scope[disposedSymbol] = true;
   if (scope[disposablesSymbol]) {
     if (Array.isArray(scope[disposablesSymbol])) {
@@ -216,13 +216,13 @@ export const disposeScope = (scope: Scope): void => {
   }
 
   if (current) {
-    delete current[previousSiblingSymbol];
+    delete current[previousSymbol];
   }
   if (head) {
     if (current) {
-      head[nextSiblingSymbol] = current;
+      head[nextSymbol] = current;
     } else {
-      delete head[nextSiblingSymbol];
+      delete head[nextSymbol];
     }
   }
 };

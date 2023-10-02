@@ -57,13 +57,13 @@ test("createScope", () => {
   expect(a).toMatchInlineSnapshot(`
     {
       Symbol(name): "a",
-      Symbol(nextSibling): [Object b],
+      Symbol(next): [Object b],
     }
   `);
   expect(b).toMatchInlineSnapshot(`
     {
       Symbol(parent): [Object a],
-      Symbol(previousSibling): [Object a],
+      Symbol(previous): [Object a],
       Symbol(err): [Function],
       Symbol(name): "b",
     }
@@ -74,13 +74,13 @@ test("createScope", () => {
   expect(a).toMatchInlineSnapshot(`
     {
       Symbol(name): "a",
-      Symbol(nextSibling): [Object c],
+      Symbol(next): [Object c],
     }
   `);
   expect(b).toMatchInlineSnapshot(`
     {
       Symbol(parent): [Object a],
-      Symbol(previousSibling): [Object c],
+      Symbol(previous): [Object c],
       Symbol(err): [Function],
       Symbol(name): "b",
     }
@@ -88,8 +88,8 @@ test("createScope", () => {
   expect(c).toMatchInlineSnapshot(`
     {
       Symbol(parent): [Object a],
-      Symbol(previousSibling): [Object a],
-      Symbol(nextSibling): [Object b],
+      Symbol(previous): [Object a],
+      Symbol(next): [Object b],
       Symbol(name): "c",
     }
   `);
@@ -346,7 +346,7 @@ test("disposeScope", () => {
   expect(a).toMatchInlineSnapshot(`
     {
       Symbol(name): "a",
-      Symbol(nextSibling): [Object c],
+      Symbol(next): [Object c],
     }
   `);
   expect(b).toMatchInlineSnapshot(`
@@ -358,7 +358,7 @@ test("disposeScope", () => {
   expect(c).toMatchInlineSnapshot(`
     {
       Symbol(parent): [Object a],
-      Symbol(previousSibling): [Object a],
+      Symbol(previous): [Object a],
       Symbol(name): "c",
     }
   `);
@@ -375,7 +375,7 @@ test("disposeScope2", () => {
   expect(a).toMatchInlineSnapshot(`
     {
       Symbol(name): "a",
-      Symbol(nextSibling): [Object b],
+      Symbol(next): [Object b],
       Symbol(disposed): true,
     }
   `);
@@ -387,7 +387,7 @@ test("disposeScope2", () => {
   `);
   expect(c).toMatchInlineSnapshot(`
     {
-      Symbol(nextSibling): [Object b],
+      Symbol(next): [Object b],
       Symbol(name): "c",
       Symbol(disposed): true,
     }
