@@ -8,6 +8,7 @@ import {
   getContext,
   isAncestorScope,
   isDescendantScope,
+  isScopeDisposed,
   runInScope,
 } from "./scope";
 import { getNumberedString, log, nameSymbol } from "./setupTests";
@@ -314,13 +315,81 @@ test("createDisposable", () => {
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
   disposeScope(b);
   expect(readLog()).toMatchInlineSnapshot(`
-    > [disposable 2]
     > [disposable 3]
+    > [disposable 2]
   `);
 
-  expect(() => disposeScope(b)).toThrowErrorMatchingInlineSnapshot(
+  expect(() =>
+    createDisposable(() => {}, b)
+  ).toThrowErrorMatchingInlineSnapshot(
     `"The scope is expected to not be in disposed state."`
   );
 });
 
-test("disposeScope", () => {});
+test("isScopeDisposed", () => {
+  expect(isScopeDisposed()).toMatchInlineSnapshot(`false`);
+  const a = createScope();
+  expect(isScopeDisposed(a)).toMatchInlineSnapshot(`false`);
+  runInScope(() => expect(isScopeDisposed()).toMatchInlineSnapshot(`false`), a);
+  disposeScope(a);
+  expect(isScopeDisposed(a)).toMatchInlineSnapshot(`true`);
+});
+
+test("disposeScope", () => {
+  const a = createScope();
+  (a as any)[nameSymbol] = "a";
+  const b = createScope(undefined, a);
+  (b as any)[nameSymbol] = "b";
+  const c = createScope(undefined, a);
+  (c as any)[nameSymbol] = "c";
+  disposeScope(b);
+  expect(a).toMatchInlineSnapshot(`
+    {
+      Symbol(name): "a",
+      Symbol(nextSibling): [Object c],
+    }
+  `);
+  expect(b).toMatchInlineSnapshot(`
+    {
+      Symbol(name): "b",
+      Symbol(disposed): true,
+    }
+  `);
+  expect(c).toMatchInlineSnapshot(`
+    {
+      Symbol(parent): [Object a],
+      Symbol(previousSibling): [Object a],
+      Symbol(name): "c",
+    }
+  `);
+});
+
+test("disposeScope2", () => {
+  const a = createScope();
+  (a as any)[nameSymbol] = "a";
+  const b = createScope(undefined, a);
+  (b as any)[nameSymbol] = "b";
+  const c = createScope(undefined, a);
+  (c as any)[nameSymbol] = "c";
+  disposeScope(a);
+  expect(a).toMatchInlineSnapshot(`
+    {
+      Symbol(name): "a",
+      Symbol(nextSibling): [Object b],
+      Symbol(disposed): true,
+    }
+  `);
+  expect(b).toMatchInlineSnapshot(`
+    {
+      Symbol(name): "b",
+      Symbol(disposed): true,
+    }
+  `);
+  expect(c).toMatchInlineSnapshot(`
+    {
+      Symbol(nextSibling): [Object b],
+      Symbol(name): "c",
+      Symbol(disposed): true,
+    }
+  `);
+});

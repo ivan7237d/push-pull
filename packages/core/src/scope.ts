@@ -177,6 +177,8 @@ export const isScopeDisposed = (scope: Scope | undefined = currentScope) => {
 export const disposeScope = (scope: Scope): void => {
   assertScopeNotDisposed(scope);
   const head = scope[previousSiblingSymbol];
+
+  // Dispose children.
   let current = scope[nextSiblingSymbol];
   while (current && current[parentSymbol] === scope) {
     disposeScope(current);
@@ -188,10 +190,11 @@ export const disposeScope = (scope: Scope): void => {
   }
   delete scope[parentSymbol];
   delete scope[previousSiblingSymbol];
+  scope[disposedSymbol] = true;
   if (scope[disposablesSymbol]) {
     if (Array.isArray(scope[disposablesSymbol])) {
       const disposables = scope[disposablesSymbol];
-      for (let i = 0; i < disposables.length; i++) {
+      for (let i = disposables.length - 1; i >= 0; i--) {
         try {
           disposables[i]!();
         } catch (error) {
@@ -222,5 +225,4 @@ export const disposeScope = (scope: Scope): void => {
       delete head[nextSiblingSymbol];
     }
   }
-  scope[disposedSymbol] = true;
 };
