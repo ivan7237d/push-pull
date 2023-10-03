@@ -201,10 +201,9 @@ const runDisposables = (scope: Scope): Scope | undefined => {
 
   if (scope[disposablesSymbol]) {
     if (Array.isArray(scope[disposablesSymbol])) {
-      const disposables = scope[disposablesSymbol];
-      for (let i = disposables.length - 1; i >= 0; i--) {
+      for (let i = scope[disposablesSymbol].length - 1; i >= 0; i--) {
         try {
-          disposables[i]!();
+          scope[disposablesSymbol][i]!();
         } catch (error) {
           queueMicrotask(() => {
             throw error;
