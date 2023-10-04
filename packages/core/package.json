@@ -1,8 +1,8 @@
 {
-  "name": "@asyncs/core",
+  "name": "@push-pull/core",
   "version": "0.0.0",
-  "description": "Asyncs core",
-  "repository": "https://github.com/ivan7237d/asyncs.git",
+  "description": "Push-Pull core",
+  "repository": "https://github.com/ivan7237d/push-pull.git",
   "license": "MIT",
   "module": "build/module/index.js",
   "main": "build/main/index.js",

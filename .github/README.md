@@ -1,27 +1,23 @@
-# Asyncs
+# Push-Pull
 
-Async constants and variables. WIP.
+WIP.
 
 ## Installation
 
 ```bash
-npm install @asyncs/core
+bun add @push-pull/core
 ```
 
-or
-
 ```bash
-yarn add @asyncs/core
+pnpm add @push-pull/core
 ```
 
-or
+```bash
+yarn add @push-pull/core
+```
 
 ```bash
-pnpm add @asyncs/core
+npm install @push-pull/core
 ```
 
 ## Usage
-
----
-
-[Contributing guidelines](https://github.com/ivan7237d/asyncs/blob/master/.github/CONTRIBUTING.md)
