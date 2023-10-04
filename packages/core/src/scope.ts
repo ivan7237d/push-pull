@@ -123,29 +123,17 @@ export const runInScope = (
   callback: () => void,
   scope: Scope | undefined
 ): void => {
-  if (currentScope === scope) {
+  if (scope) {
+    assertScopeNotDisposed(scope);
+  }
+  const outerScope = currentScope;
+  currentScope = scope;
+  try {
     callback();
-  } else {
-    if (scope) {
-      assertScopeNotDisposed(scope);
-    }
-    const outerScope = currentScope;
-    currentScope = scope;
-    if (scope && (errSymbol in scope || scope[parentSymbol] !== outerScope)) {
-      try {
-        callback();
-      } catch (error) {
-        errScope(error, scope);
-      } finally {
-        currentScope = outerScope;
-      }
-    } else {
-      try {
-        callback();
-      } finally {
-        currentScope = outerScope;
-      }
-    }
+  } catch (error) {
+    errScope(error, scope);
+  } finally {
+    currentScope = outerScope;
   }
 };
 

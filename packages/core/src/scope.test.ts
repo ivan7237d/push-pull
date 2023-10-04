@@ -229,18 +229,6 @@ test("errScope", () => {
 });
 
 test("runInScope", () => {
-  const nextOops = getNumberedString("oops");
-  let oops: string;
-
-  // If the provided scope is the same as the current scope, just run the
-  // callback.
-  expect((oops = nextOops())).toMatchInlineSnapshot(`"oops1"`);
-  expect(() => {
-    runInScope(() => {
-      throw "oops1";
-    }, undefined);
-  }).toThrow("oops1");
-
   const a = createScope();
   a[contextKey1] = 1;
   runInScope(() => {
@@ -249,49 +237,25 @@ test("runInScope", () => {
   // Make sure the outer context is restored.
   expect(getContext(contextKey1)).toMatchInlineSnapshot(`undefined`);
 
-  // When there is no error handler and synthetic parent scope is the same as
-  // native parent scope, do not catch the error.
-  expect((oops = nextOops())).toMatchInlineSnapshot(`"oops2"`);
-  expect(() => {
-    runInScope(() => {
-      throw oops;
-    }, a);
-  }).toThrow("oops2");
-
-  // Pass error to this scope's error handler.
+  // Pass error to the scope's error handler.
   const b = createScope(log.add(label("error handler for scope b")));
-  expect((oops = nextOops())).toMatchInlineSnapshot(`"oops3"`);
   runInScope(() => {
-    throw oops;
+    throw "oops1";
   }, b);
   expect(readLog()).toMatchInlineSnapshot(
-    `> [error handler for scope b] "oops3"`
+    `> [error handler for scope b] "oops1"`
   );
   // Make sure the outer context is restored.
   expect(getContext(contextKey1)).toMatchInlineSnapshot(`undefined`);
 
-  // Pass error to ancestor scope's error handler.
-  const c = createScope(undefined, b);
-  expect((oops = nextOops())).toMatchInlineSnapshot(`"oops4"`);
+  // When there is no error handler, throw in a microtask.
   runInScope(() => {
-    throw oops;
-  }, c);
-  expect(readLog()).toMatchInlineSnapshot(
-    `> [error handler for scope b] "oops4"`
-  );
+    throw "oops2";
+  }, undefined);
+  expect(processMockMicrotaskQueue).toThrow("oops2");
 
-  // When there is no error handler but synthetic and native parent scopes do
-  // not match, throw in a microtask.
-  expect((oops = nextOops())).toMatchInlineSnapshot(`"oops5"`);
-  runInScope(() => {
-    runInScope(() => {
-      throw oops;
-    }, a);
-  }, b);
-  expect(processMockMicrotaskQueue).toThrow("oops5");
-
-  disposeScope(c);
-  expect(() => runInScope(() => {}, c)).toThrowErrorMatchingInlineSnapshot(
+  disposeScope(b);
+  expect(() => runInScope(() => {}, b)).toThrowErrorMatchingInlineSnapshot(
     `"The scope is expected to not be in disposed state."`
   );
 });
