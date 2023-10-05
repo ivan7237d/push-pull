@@ -223,7 +223,9 @@ test("errScope", () => {
 
   expect((oops = nextOops())).toMatchInlineSnapshot(`"oops7"`);
   disposeScope(c);
-  expect(() => errScope(oops, c)).toThrowErrorMatchingInlineSnapshot(
+  expect(() => {
+    errScope(oops, c);
+  }).toThrowErrorMatchingInlineSnapshot(
     `"The scope is expected to not be in disposed state."`
   );
 });
@@ -255,13 +257,17 @@ test("runInScope", () => {
   expect(processMockMicrotaskQueue).toThrow("oops2");
 
   disposeScope(b);
-  expect(() => runInScope(() => {}, b)).toThrowErrorMatchingInlineSnapshot(
+  expect(() => {
+    runInScope(() => {}, b);
+  }).toThrowErrorMatchingInlineSnapshot(
     `"The scope is expected to not be in disposed state."`
   );
 });
 
 test("createDisposable", () => {
-  expect(() => createDisposable(() => {})).toThrowErrorMatchingInlineSnapshot(
+  expect(() => {
+    createDisposable(() => {});
+  }).toThrowErrorMatchingInlineSnapshot(
     `"Disposables can only be created within a scope."`
   );
 
@@ -283,9 +289,9 @@ test("createDisposable", () => {
     > [disposable 2]
   `);
 
-  expect(() =>
-    createDisposable(() => {}, b)
-  ).toThrowErrorMatchingInlineSnapshot(
+  expect(() => {
+    createDisposable(() => {}, b);
+  }).toThrowErrorMatchingInlineSnapshot(
     `"The scope is expected to not be in disposed state."`
   );
 });
@@ -294,7 +300,9 @@ test("isScopeDisposed", () => {
   expect(isScopeDisposed()).toMatchInlineSnapshot(`false`);
   const a = createScope();
   expect(isScopeDisposed(a)).toMatchInlineSnapshot(`false`);
-  runInScope(() => expect(isScopeDisposed()).toMatchInlineSnapshot(`false`), a);
+  runInScope(() => {
+    expect(isScopeDisposed()).toMatchInlineSnapshot(`false`);
+  }, a);
   disposeScope(a);
   expect(isScopeDisposed(a)).toMatchInlineSnapshot(`true`);
 });
@@ -360,7 +368,9 @@ test("disposeScope: handling errors in disposables", () => {
 test("disposeScope: no re-dispose", () => {
   const a = createScope();
   disposeScope(a);
-  expect(() => disposeScope(a)).toThrowErrorMatchingInlineSnapshot(
+  expect(() => {
+    disposeScope(a);
+  }).toThrowErrorMatchingInlineSnapshot(
     `"The scope is expected to not be in disposed state."`
   );
 });
