@@ -155,7 +155,9 @@ export const createDisposable: {
   }
 };
 
-export const isScopeDisposed = (scope: Scope | undefined = currentScope) => {
+export const isScopeDisposed = (
+  scope: Scope | undefined = currentScope
+): boolean => {
   if (scope) {
     return disposedSymbol in scope;
   }
