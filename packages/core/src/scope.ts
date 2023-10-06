@@ -46,8 +46,8 @@ export const createScope = (
 };
 
 /**
- * This is a weak operator, meaning that a scope is considered an ancestor of
- * itself.
+ * This is a non-strict operator, meaning that a scope is considered an ancestor
+ * of itself.
  */
 export const isAncestorScope = (
   maybeAncestor: Scope | undefined,
@@ -66,8 +66,8 @@ export const isAncestorScope = (
 };
 
 /**
- * This is a weak operator, meaning that a scope is considered a descendant of
- * itself.
+ * This is a non-strict operator, meaning that a scope is considered a
+ * descendant of itself.
  */
 export const isDescendantScope = (
   maybeDescendant: Scope | undefined,
@@ -85,13 +85,35 @@ export const isDescendantScope = (
   return true;
 };
 
+/**
+ * If `scope` is provided, looks for the key only in `scope`'s ancestors, not
+ * `scope` itself, so unlike other functions,
+ *
+ * ```
+ * console.log(getContext(key, defaultValue, scope));
+ * ```
+ *
+ * is not equivalent to
+ *
+ * ```
+ * runInScope(() => {
+ *   console.log(getContext(key, defaultValue));
+ * }, scope);
+ * ```
+ */
 export const getContext = <Key extends keyof Scope, DefaultValue = undefined>(
   key: Key,
   defaultValue?: DefaultValue,
-  scope: Scope | undefined = currentScope
+  scope?: Scope
 ): Required<Scope>[Key] | DefaultValue => {
   if (scope) {
     assertScopeNotDisposed(scope);
+    scope = scope[parentSymbol];
+  } else {
+    scope = currentScope;
+    if (scope) {
+      assertScopeNotDisposed(scope);
+    }
   }
   while (scope) {
     if (key in scope) {
@@ -109,7 +131,7 @@ export const errScope = (
   if (scope) {
     assertScopeNotDisposed(scope);
   }
-  const err = getContext(errSymbol, undefined, scope);
+  const err = scope?.[errSymbol] ?? getContext(errSymbol, undefined, scope);
   if (err) {
     err(error);
   } else {

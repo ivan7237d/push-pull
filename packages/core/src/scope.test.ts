@@ -134,8 +134,11 @@ test("getContext", () => {
   const a = createScope();
   const b = createScope(undefined, a);
   const c = createScope(undefined, b);
+  const d = createScope(undefined, c);
   b[contextKey1] = 1;
   c[contextKey1] = 2;
+
+  // Test returned type and default value.
   expect(
     // $ExpectType number | undefined
     getContext(contextKey1)
@@ -160,16 +163,41 @@ test("getContext", () => {
     // $ExpectType number | "a" | undefined
     getContext(contextKey2, "a")
   ).toMatchInlineSnapshot(`"a"`);
+
+  // Test picking up the right scope.
+  expect(getContext(contextKey1, undefined, undefined)).toMatchInlineSnapshot(
+    `undefined`
+  );
   expect(getContext(contextKey1, undefined, a)).toMatchInlineSnapshot(
     `undefined`
   );
-  expect(getContext(contextKey1, undefined, b)).toMatchInlineSnapshot(`1`);
-  expect(getContext(contextKey1, undefined, c)).toMatchInlineSnapshot(`2`);
+  expect(getContext(contextKey1, undefined, b)).toMatchInlineSnapshot(
+    `undefined`
+  );
+  expect(getContext(contextKey1, undefined, c)).toMatchInlineSnapshot(`1`);
+  expect(getContext(contextKey1, undefined, d)).toMatchInlineSnapshot(`2`);
+  runInScope(() => {
+    expect(getContext(contextKey1)).toMatchInlineSnapshot(`undefined`);
+  }, a);
+  runInScope(() => {
+    expect(getContext(contextKey1)).toMatchInlineSnapshot(`1`);
+  }, b);
   runInScope(() => {
     expect(getContext(contextKey1)).toMatchInlineSnapshot(`2`);
   }, c);
+  runInScope(() => {
+    expect(getContext(contextKey1)).toMatchInlineSnapshot(`2`);
+  }, d);
 
-  disposeScope(c);
+  // Test checking for disposed scope.
+  expect(() => {
+    runInScope(() => {
+      disposeScope(c);
+      getContext(contextKey1, undefined);
+    }, c);
+  }).toThrowErrorMatchingInlineSnapshot(
+    `"The scope is expected to not be in disposed state."`
+  );
   expect(() =>
     getContext(contextKey1, undefined, c)
   ).toThrowErrorMatchingInlineSnapshot(
