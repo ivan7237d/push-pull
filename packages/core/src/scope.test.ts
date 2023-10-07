@@ -9,6 +9,7 @@ import {
   isAncestorScope,
   isDescendantScope,
   isScopeDisposed,
+  rootScope,
   runInScope,
 } from "./scope";
 import { getNumberedString, log, nameSymbol } from "./setupTests";
@@ -101,8 +102,8 @@ test("createScope", () => {
 });
 
 test("isAncestorScope, isDescendantScope", () => {
-  expect(isAncestorScope(undefined, undefined)).toMatchInlineSnapshot(`true`);
-  expect(isDescendantScope(undefined, undefined)).toMatchInlineSnapshot(`true`);
+  expect(isAncestorScope(rootScope, rootScope)).toMatchInlineSnapshot(`true`);
+  expect(isDescendantScope(rootScope, rootScope)).toMatchInlineSnapshot(`true`);
   const a = createScope();
   const b = createScope(undefined, a);
   const c = createScope(undefined, b);
@@ -249,16 +250,25 @@ test("errScope", () => {
     `> [error handler for scope b] "oops6"`
   );
 
-  expect((oops = nextOops())).toMatchInlineSnapshot(`"oops7"`);
+  const e = createScope(undefined, c);
   disposeScope(c);
+  expect((oops = nextOops())).toMatchInlineSnapshot(`"oops7"`);
   expect(() => {
     errScope(oops, c);
+  }).toThrowErrorMatchingInlineSnapshot(
+    `"The scope is expected to not be in disposed state."`
+  );
+  expect(() => {
+    errScope(oops, e);
   }).toThrowErrorMatchingInlineSnapshot(
     `"The scope is expected to not be in disposed state."`
   );
 });
 
 test("runInScope", () => {
+  runInScope(() => {
+    expect(getContext(contextKey1)).toMatchInlineSnapshot(`undefined`);
+  }, rootScope);
   const a = createScope();
   a[contextKey1] = 1;
   runInScope(() => {
@@ -281,7 +291,7 @@ test("runInScope", () => {
   // When there is no error handler, throw in a microtask.
   runInScope(() => {
     throw "oops2";
-  }, undefined);
+  }, rootScope);
   expect(processMockMicrotaskQueue).toThrow("oops2");
 
   disposeScope(b);

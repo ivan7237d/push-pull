@@ -5,6 +5,8 @@ const disposablesSymbol = Symbol("disposables");
 const disposedSymbol = Symbol("disposed");
 const errSymbol = Symbol("err");
 
+export const rootScope = Symbol("rootScope");
+
 export interface Scope {
   [parentSymbol]?: Scope;
   [previousSymbol]?: Scope;
@@ -14,7 +16,7 @@ export interface Scope {
   [errSymbol]?: (error: unknown) => void;
 }
 
-let currentScope: Scope | undefined;
+let currentScope: Scope | typeof rootScope = rootScope;
 
 const assertScopeNotDisposed = (scope: Scope) => {
   if (disposedSymbol in scope) {
@@ -24,13 +26,11 @@ const assertScopeNotDisposed = (scope: Scope) => {
 
 export const createScope = (
   err?: (error: unknown) => void,
-  scope: Scope | undefined = currentScope
+  scope: Scope | typeof rootScope = currentScope
 ): Scope => {
-  if (scope) {
-    assertScopeNotDisposed(scope);
-  }
   const newScope: Scope = {};
-  if (scope) {
+  if (scope !== rootScope) {
+    assertScopeNotDisposed(scope);
     newScope[parentSymbol] = scope;
     newScope[previousSymbol] = scope;
     if (scope[nextSymbol]) {
@@ -50,17 +50,17 @@ export const createScope = (
  * of itself.
  */
 export const isAncestorScope = (
-  maybeAncestor: Scope | undefined,
-  scope: Scope | undefined = currentScope
+  maybeAncestor: Scope | typeof rootScope,
+  scope: Scope | typeof rootScope = currentScope
 ): boolean => {
-  if (scope) {
+  if (scope !== rootScope) {
     assertScopeNotDisposed(scope);
   }
   while (scope !== maybeAncestor) {
-    if (!scope) {
+    if (scope === rootScope) {
       return false;
     }
-    scope = scope[parentSymbol];
+    scope = scope[parentSymbol] ?? rootScope;
   }
   return true;
 };
@@ -70,17 +70,17 @@ export const isAncestorScope = (
  * descendant of itself.
  */
 export const isDescendantScope = (
-  maybeDescendant: Scope | undefined,
-  scope: Scope | undefined = currentScope
+  maybeDescendant: Scope | typeof rootScope,
+  scope: Scope | typeof rootScope = currentScope
 ): boolean => {
-  if (maybeDescendant) {
+  if (maybeDescendant !== rootScope) {
     assertScopeNotDisposed(maybeDescendant);
   }
   while (scope !== maybeDescendant) {
-    if (!maybeDescendant) {
+    if (maybeDescendant === rootScope) {
       return false;
     }
-    maybeDescendant = maybeDescendant[parentSymbol];
+    maybeDescendant = maybeDescendant[parentSymbol] ?? rootScope;
   }
   return true;
 };
@@ -109,11 +109,9 @@ export const getContext = <Key extends keyof Scope, DefaultValue = undefined>(
   if (scope) {
     assertScopeNotDisposed(scope);
     scope = scope[parentSymbol];
-  } else {
+  } else if (currentScope !== rootScope) {
     scope = currentScope;
-    if (scope) {
-      assertScopeNotDisposed(scope);
-    }
+    assertScopeNotDisposed(scope);
   }
   while (scope) {
     if (key in scope) {
@@ -126,26 +124,35 @@ export const getContext = <Key extends keyof Scope, DefaultValue = undefined>(
 
 export const errScope = (
   error: unknown,
-  scope: Scope | undefined = currentScope
+  scope: Scope | typeof rootScope = currentScope
 ): void => {
-  if (scope) {
-    assertScopeNotDisposed(scope);
+  let err: ((error: unknown) => void) | undefined;
+  if (scope !== rootScope) {
+    if (errSymbol in scope) {
+      assertScopeNotDisposed(scope);
+      err = scope[errSymbol];
+    } else {
+      err = getContext(errSymbol, undefined, scope);
+    }
   }
-  const err = scope?.[errSymbol] ?? getContext(errSymbol, undefined, scope);
   if (err) {
-    err(error);
-  } else {
-    queueMicrotask(() => {
-      throw error;
-    });
+    try {
+      err(error);
+      return;
+    } catch (newError) {
+      error = newError;
+    }
   }
+  queueMicrotask(() => {
+    throw error;
+  });
 };
 
 export const runInScope = (
   callback: () => void,
-  scope: Scope | undefined
+  scope: Scope | typeof rootScope
 ): void => {
-  if (scope) {
+  if (scope !== rootScope) {
     assertScopeNotDisposed(scope);
   }
   const outerScope = currentScope;
@@ -159,10 +166,11 @@ export const runInScope = (
   }
 };
 
-export const createDisposable: {
-  (disposable: () => void, scope?: Scope): void;
-} = (disposable: () => void, scope: Scope | undefined = currentScope) => {
-  if (!scope) {
+export const createDisposable = (
+  disposable: () => void,
+  scope: Scope | typeof rootScope = currentScope
+) => {
+  if (scope === rootScope) {
     throw new Error("Disposables can only be created within a scope.");
   }
   assertScopeNotDisposed(scope);
@@ -178,9 +186,9 @@ export const createDisposable: {
 };
 
 export const isScopeDisposed = (
-  scope: Scope | undefined = currentScope
+  scope: Scope | typeof rootScope = currentScope
 ): boolean => {
-  if (scope) {
+  if (scope !== rootScope) {
     return disposedSymbol in scope;
   }
   return false;
