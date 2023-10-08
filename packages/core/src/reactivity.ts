@@ -165,7 +165,7 @@ const maybeProcessQueues = () => {
 };
 
 export const push: {
-  (subject: Record<string | number | symbol, unknown> | (() => void)): void;
+  <T>(subject: T & (T extends Function ? () => void : object)): void;
 } = (
   // This cannot be an `Effect` because we're not exposing effects to the
   // client.
@@ -284,8 +284,7 @@ const sweep = (reaction: LazyReaction | Effect) => {
 };
 
 export const pull: {
-  // TODO: Change to Record<unknown, unknown>? Add unit tests.
-  (subject: Record<string | number | symbol, unknown> | (() => void)): void;
+  <T>(subject: T & (T extends Function ? () => void : object)): void;
 } = (
   // This cannot be an `Effect` because we're not exposing effects to the
   // client.
