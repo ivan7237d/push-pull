@@ -166,12 +166,14 @@ export const runInScope = (
   }
 };
 
-export const createDisposable = (
+export const onDispose = (
   disposable: () => void,
   scope: Scope | typeof rootScope = currentScope
 ) => {
   if (scope === rootScope) {
-    throw new Error("Disposables can only be created within a scope.");
+    throw new Error(
+      "Any code that involves disposal logic (i.e. invokes `onDispose`) can only be run within a scope other than `rootScope`."
+    );
   }
   assertScopeNotDisposed(scope);
   if (disposablesSymbol in scope) {

@@ -1,10 +1,10 @@
 import {
   Scope,
-  createDisposable,
   createScope,
   disposeScope,
   getContext,
   isScopeDisposed,
+  onDispose,
   rootScope,
   runInScope,
 } from "./scope";
@@ -318,7 +318,7 @@ export const pull: {
 export const createEffect = (callback: () => void): void => {
   const effect = createScope() as Effect;
   effect[callbackSymbol] = callback;
-  createDisposable(() => {
+  onDispose(() => {
     removeFromChildren(effect, 0);
   });
   sweep(effect);

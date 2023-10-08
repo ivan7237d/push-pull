@@ -1,7 +1,6 @@
 import { label } from "@1log/core";
 import { readLog } from "@1log/jest";
 import {
-  createDisposable,
   createScope,
   disposeScope,
   errScope,
@@ -9,6 +8,7 @@ import {
   isAncestorScope,
   isDescendantScope,
   isScopeDisposed,
+  onDispose,
   rootScope,
   runInScope,
 } from "./scope";
@@ -302,23 +302,23 @@ test("runInScope", () => {
   );
 });
 
-test("createDisposable", () => {
+test("onDispose", () => {
   expect(() => {
-    createDisposable(() => {});
+    onDispose(() => {});
   }).toThrowErrorMatchingInlineSnapshot(
-    `"Disposables can only be created within a scope."`
+    `"Any code that involves disposal logic (i.e. invokes \`onDispose\`) can only be run within a scope other than \`rootScope\`."`
   );
 
   const a = createScope();
-  createDisposable(log.add(label("disposable 1")), a);
+  onDispose(log.add(label("disposable 1")), a);
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
   disposeScope(a);
   expect(readLog()).toMatchInlineSnapshot(`> [disposable 1]`);
 
   const b = createScope();
   runInScope(() => {
-    createDisposable(log.add(label("disposable 2")));
-    createDisposable(log.add(label("disposable 3")));
+    onDispose(log.add(label("disposable 2")));
+    onDispose(log.add(label("disposable 3")));
   }, b);
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
   disposeScope(b);
@@ -328,7 +328,7 @@ test("createDisposable", () => {
   `);
 
   expect(() => {
-    createDisposable(() => {}, b);
+    onDispose(() => {}, b);
   }).toThrowErrorMatchingInlineSnapshot(
     `"The scope is expected to not be in disposed state."`
   );
@@ -347,13 +347,13 @@ test("isScopeDisposed", () => {
 
 test("disposeScope: calling disposables", () => {
   const a = createScope();
-  createDisposable(log.add(label("disposable 1")), a);
+  onDispose(log.add(label("disposable 1")), a);
   disposeScope(a);
   expect(readLog()).toMatchInlineSnapshot(`> [disposable 1]`);
 
   const b = createScope();
-  createDisposable(log.add(label("disposable 2")), b);
-  createDisposable(log.add(label("disposable 3")), b);
+  onDispose(log.add(label("disposable 2")), b);
+  onDispose(log.add(label("disposable 3")), b);
   disposeScope(b);
   expect(readLog()).toMatchInlineSnapshot(`
     > [disposable 3]
@@ -364,7 +364,7 @@ test("disposeScope: calling disposables", () => {
 test("disposeScope: handling errors in disposables", () => {
   const a = createScope();
   (a as any)[nameSymbol] = "a";
-  createDisposable(() => {
+  onDispose(() => {
     throw "oops1";
   }, a);
   disposeScope(a);
@@ -379,11 +379,11 @@ test("disposeScope: handling errors in disposables", () => {
 
   const b = createScope();
   (b as any)[nameSymbol] = "b";
-  createDisposable(log.add(label("first disposable in b")), b);
-  createDisposable(() => {
+  onDispose(log.add(label("first disposable in b")), b);
+  onDispose(() => {
     throw "oops2";
   }, b);
-  createDisposable(log.add(label("third disposable in b")), b);
+  onDispose(log.add(label("third disposable in b")), b);
   disposeScope(b);
   expect(b).toMatchInlineSnapshot(`
     {
@@ -426,13 +426,13 @@ test("disposeScope: disposing single scope", () => {
 test("disposeScope: disposing last scope", () => {
   const a = createScope();
   (a as any)[nameSymbol] = "a";
-  createDisposable(log.add(label("disposable in a")), a);
+  onDispose(log.add(label("disposable in a")), a);
   const b = createScope(undefined, a);
   (b as any)[nameSymbol] = "b";
-  createDisposable(log.add(label("disposable in b")), b);
+  onDispose(log.add(label("disposable in b")), b);
   const c = createScope(undefined, a);
   (c as any)[nameSymbol] = "c";
-  createDisposable(log.add(label("disposable in c")), c);
+  onDispose(log.add(label("disposable in c")), c);
 
   disposeScope(c);
   expect(a).toMatchInlineSnapshot(`
@@ -466,13 +466,13 @@ test("disposeScope: disposing last scope", () => {
 test("disposeScope: disposing middle scope", () => {
   const a = createScope();
   (a as any)[nameSymbol] = "a";
-  createDisposable(log.add(label("disposable in a")), a);
+  onDispose(log.add(label("disposable in a")), a);
   const b = createScope(undefined, a);
   (b as any)[nameSymbol] = "b";
-  createDisposable(log.add(label("disposable in b")), b);
+  onDispose(log.add(label("disposable in b")), b);
   const c = createScope(undefined, a);
   (c as any)[nameSymbol] = "c";
-  createDisposable(log.add(label("disposable in c")), c);
+  onDispose(log.add(label("disposable in c")), c);
 
   disposeScope(b);
   expect(a).toMatchInlineSnapshot(`
@@ -505,13 +505,13 @@ test("disposeScope: disposing middle scope", () => {
 test("disposeScope: disposing first scope", () => {
   const a = createScope();
   (a as any)[nameSymbol] = "a";
-  createDisposable(log.add(label("disposable in a")), a);
+  onDispose(log.add(label("disposable in a")), a);
   const b = createScope(undefined, a);
   (b as any)[nameSymbol] = "b";
-  createDisposable(log.add(label("disposable in b")), b);
+  onDispose(log.add(label("disposable in b")), b);
   const c = createScope(undefined, a);
   (c as any)[nameSymbol] = "c";
-  createDisposable(log.add(label("disposable in c")), c);
+  onDispose(log.add(label("disposable in c")), c);
 
   disposeScope(a);
   expect(a).toMatchInlineSnapshot(`
@@ -551,13 +551,13 @@ test("disposeScope: disposing first scope", () => {
 test("disposeScope: re-entry", () => {
   const a = createScope();
   (a as any)[nameSymbol] = "a";
-  createDisposable(log.add(label("disposable in a")), a);
+  onDispose(log.add(label("disposable in a")), a);
   const b = createScope(undefined, a);
   (b as any)[nameSymbol] = "b";
-  createDisposable(log.add(label("disposable in b")), b);
+  onDispose(log.add(label("disposable in b")), b);
   const c = createScope(undefined, a);
   (c as any)[nameSymbol] = "c";
-  createDisposable(() => {
+  onDispose(() => {
     log.add(label("disposable in c"))();
     expect(isScopeDisposed(a)).toMatchInlineSnapshot(`true`);
     expect(isScopeDisposed(b)).toMatchInlineSnapshot(`true`);
