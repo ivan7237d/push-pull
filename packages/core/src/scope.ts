@@ -172,7 +172,7 @@ export const onDispose = (
 ) => {
   if (scope === rootScope) {
     throw new Error(
-      "Any code that involves disposal logic (i.e. invokes `onDispose`) can only be run within a scope other than `rootScope`."
+      "`onDispose` can only be called within a scope other than `rootScope`."
     );
   }
   assertScopeNotDisposed(scope);

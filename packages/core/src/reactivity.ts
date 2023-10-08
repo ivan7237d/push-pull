@@ -50,8 +50,8 @@ interface LazyReaction extends Reaction, Subject {
 /**
  * An effect = eager reaction. Effect objects are not made accessible to the
  * client and so are guaranteed to not be used as subjects. An effect object is
- * among other things a `Scope`; its parent is the scope where `createEffect`
- * was run, and it's used in its own turn as a parent for `effect[scopeSymbol]`.
+ * among other things a `Scope` which is a child of the scope where `createEffect`
+ * was run and the parent of `effect[scopeSymbol]`.
  */
 interface Effect extends Reaction, Scope {
   [callbackSymbol]: () => void;
@@ -310,7 +310,7 @@ export const pull: {
     // inside a reaction? Or is linting sufficient to prevent accidental
     // subscriptions?
     throw new Error(
-      "A reaction (a function that invokes `pull`) cannot be called by the client (you), but can only be passed to `createEffect` and `pull`."
+      "`pull` can only be called synchronously within the `Scope` of a function passed to `createEffect` or `pull`."
     );
   }
 };
