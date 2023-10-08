@@ -13,6 +13,7 @@ const parentsSymbol = Symbol("parents");
 const childrenSymbol = Symbol("children");
 const scopeSymbol = Symbol("scope");
 const checkSymbol = Symbol("check");
+const runningSymbol = Symbol("running");
 const callbackSymbol = Symbol("callback");
 
 interface Subject {
@@ -63,10 +64,13 @@ declare module "./scope" {
      * Used in `[scopeSymbol]` of a `Reaction` and points to that reaction.
      */
     [checkSymbol]?: LazyReaction | Effect;
+    /**
+     * Used in `[scopeSymbol]` of a `Reaction` and points to that reaction.
+     */
+    [runningSymbol]?: LazyReaction | Effect;
   }
 }
 
-let currentReaction: LazyReaction | Effect | undefined;
 /**
  * As part of a perf optimization trick, when running a reaction, we bump
  * `unchangedChildrenCount` until the children array diverges from the old
@@ -82,8 +86,8 @@ let processingQueues = false;
 const pushReaction = (reaction: LazyReaction | Effect, dirty?: boolean) => {
   // TODO: handle the case of cyclical dependency?
 
-  // If the reaction is in "clean" or "check" state.
-  if (scopeSymbol in reaction) {
+  // If the reaction is in "clean" or "check" state and not currently running.
+  if (scopeSymbol in reaction && !(runningSymbol in reaction[scopeSymbol])) {
     // If the reaction is clean.
     if (!(checkSymbol in reaction[scopeSymbol])) {
       if (parentsSymbol in reaction) {
@@ -176,10 +180,8 @@ export const push: {
 };
 
 const runReaction = (reaction: LazyReaction | Effect) => {
-  const outerCurrentReaction = currentReaction;
   const outerNewChildren = newChildren;
   const outerUnchangedChildrenCount = unchangedChildrenCount;
-  currentReaction = reaction;
   newChildren = undefined as typeof newChildren;
   unchangedChildrenCount = 0;
   let callback: () => void;
@@ -188,15 +190,14 @@ const runReaction = (reaction: LazyReaction | Effect) => {
   } else {
     callback = reaction;
   }
-  const scope = createScope(
+  reaction[scopeSymbol] = createScope(
     // TODO error handling
     undefined,
     callbackSymbol in reaction ? reaction : rootScope
   );
-  runInScope(callback, scope);
-  // While the callback runs, a reaction may mark `reaction` as dirty, so we
-  // don't set `[scopeSymbol]` until after the callback.
-  reaction[scopeSymbol] = scope;
+  reaction[scopeSymbol][runningSymbol] = reaction;
+  runInScope(callback, reaction[scopeSymbol]);
+  delete reaction[scopeSymbol][runningSymbol];
   if (newChildren) {
     removeFromChildren(reaction, unchangedChildrenCount);
     if (childrenSymbol in reaction && unchangedChildrenCount > 0) {
@@ -227,7 +228,6 @@ const runReaction = (reaction: LazyReaction | Effect) => {
     removeFromChildren(reaction, unchangedChildrenCount);
     reaction[childrenSymbol].length = unchangedChildrenCount;
   }
-  currentReaction = outerCurrentReaction;
   newChildren = outerNewChildren;
   unchangedChildrenCount = outerUnchangedChildrenCount;
 };
@@ -291,10 +291,11 @@ export const pull: {
   // client.
   subject: Subject | LazyReaction
 ) => {
-  if (currentReaction) {
+  const reaction = getContext(runningSymbol);
+  if (reaction) {
     if (
       !newChildren &&
-      currentReaction[childrenSymbol]?.[unchangedChildrenCount] === subject
+      reaction[childrenSymbol]?.[unchangedChildrenCount] === subject
     ) {
       unchangedChildrenCount++;
     } else if (newChildren) {
@@ -306,9 +307,6 @@ export const pull: {
       sweep(subject);
     }
   } else {
-    // TODO: add untrack-like function to allow also triggering these errors
-    // inside a reaction? Or is linting sufficient to prevent accidental
-    // subscriptions?
     throw new Error(
       "`pull` can only be called synchronously within the `Scope` of a function passed to `createEffect` or `pull`."
     );
