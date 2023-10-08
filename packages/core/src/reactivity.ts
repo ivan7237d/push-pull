@@ -318,9 +318,8 @@ export const pull: {
 export const createEffect = (callback: () => void): void => {
   const effect = createScope() as Effect;
   effect[callbackSymbol] = callback;
-  sweep(effect);
-  // TODO: make it throw if we're outside a scope.
   createDisposable(() => {
     removeFromChildren(effect, 0);
-  }, effect);
+  });
+  sweep(effect);
 };
