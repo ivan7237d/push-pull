@@ -143,7 +143,7 @@ const maybeProcessQueues = () => {
       const effect = effectQueue[i]!;
       if (!isScopeDisposed(effect)) {
         // eslint-disable-next-line no-use-before-define
-        sweep(effect);
+        ensureReactionIsClean(effect);
       }
     }
     effectQueue.length = 0;
@@ -232,10 +232,7 @@ const runReaction = (reaction: LazyReaction | Effect) => {
   unchangedChildrenCount = outerUnchangedChildrenCount;
 };
 
-/**
- * Ensures the `reaction` is clean.
- */
-const sweep = (reaction: LazyReaction | Effect) => {
+const ensureReactionIsClean = (reaction: LazyReaction | Effect) => {
   // If the reaction is clean.
   if (scopeSymbol in reaction && !(checkSymbol in reaction[scopeSymbol])) {
     return;
@@ -249,7 +246,7 @@ const sweep = (reaction: LazyReaction | Effect) => {
     // early if we end up disposed.
     const check = getContext(checkSymbol, undefined, reaction);
     if (check) {
-      sweep(check);
+      ensureReactionIsClean(check);
     }
     if (isScopeDisposed(reaction)) {
       return;
@@ -263,7 +260,7 @@ const sweep = (reaction: LazyReaction | Effect) => {
     for (let i = 0; i < reaction[childrenSymbol]!.length; i++) {
       const child = reaction[childrenSymbol]![i]!;
       if (typeof child === "function") {
-        sweep(child);
+        ensureReactionIsClean(child);
       }
       // If the reaction is dirty.
       if (!(scopeSymbol in reaction)) {
@@ -303,7 +300,7 @@ export const pull: {
       newChildren = [subject];
     }
     if (typeof subject === "function") {
-      sweep(subject);
+      ensureReactionIsClean(subject);
     }
   } else {
     throw new Error(
@@ -318,5 +315,5 @@ export const createEffect = (callback: () => void): void => {
   onDispose(() => {
     removeFromChildren(effect, 0);
   });
-  sweep(effect);
+  ensureReactionIsClean(effect);
 };
