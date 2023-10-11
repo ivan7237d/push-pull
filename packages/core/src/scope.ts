@@ -1,43 +1,41 @@
 const parentSymbol = Symbol("parent");
 const previousSymbol = Symbol("previous");
 const nextSymbol = Symbol("next");
+const runningSymbol = Symbol("running");
 const disposablesSymbol = Symbol("disposables");
 const disposedSymbol = Symbol("disposed");
 const errSymbol = Symbol("err");
-
-export const rootScope = Symbol("rootScope");
 
 export interface Scope {
   [parentSymbol]?: Scope;
   [previousSymbol]?: Scope;
   [nextSymbol]?: Scope;
+  [runningSymbol]?: true;
   [disposablesSymbol]?: (() => void) | (() => void)[];
   [disposedSymbol]?: true;
   [errSymbol]?: (error: unknown) => void;
 }
 
-let currentScope: Scope | typeof rootScope = rootScope;
+let currentScope: Scope | undefined;
 
-const assertScopeNotDisposed = (scope: Scope) => {
-  if (disposedSymbol in scope) {
-    throw new Error("The scope is expected to not be in disposed state.");
+export const createRootScope = (err?: (error: unknown) => void): Scope => {
+  const newScope: Scope = {};
+  if (err) {
+    newScope[errSymbol] = err;
   }
+  return newScope;
 };
 
-export const createScope = (
-  err?: (error: unknown) => void,
-  scope: Scope | typeof rootScope = currentScope
-): Scope => {
+export const createScope = (err?: (error: unknown) => void): Scope => {
   const newScope: Scope = {};
-  if (scope !== rootScope) {
-    assertScopeNotDisposed(scope);
-    newScope[parentSymbol] = scope;
-    newScope[previousSymbol] = scope;
-    if (scope[nextSymbol]) {
-      scope[nextSymbol][previousSymbol] = newScope;
-      newScope[nextSymbol] = scope[nextSymbol];
+  if (currentScope) {
+    newScope[parentSymbol] = currentScope;
+    newScope[previousSymbol] = currentScope;
+    if (currentScope[nextSymbol]) {
+      currentScope[nextSymbol][previousSymbol] = newScope;
+      newScope[nextSymbol] = currentScope[nextSymbol];
     }
-    scope[nextSymbol] = newScope;
+    currentScope[nextSymbol] = newScope;
   }
   if (err) {
     newScope[errSymbol] = err;
@@ -45,74 +43,11 @@ export const createScope = (
   return newScope;
 };
 
-/**
- * This is a non-strict operator, meaning that a scope is considered an ancestor
- * of itself.
- */
-export const isAncestorScope = (
-  maybeAncestor: Scope | typeof rootScope,
-  scope: Scope | typeof rootScope = currentScope
-): boolean => {
-  if (scope !== rootScope) {
-    assertScopeNotDisposed(scope);
-  }
-  while (scope !== maybeAncestor) {
-    if (scope === rootScope) {
-      return false;
-    }
-    scope = scope[parentSymbol] ?? rootScope;
-  }
-  return true;
-};
-
-/**
- * This is a non-strict operator, meaning that a scope is considered a
- * descendant of itself.
- */
-export const isDescendantScope = (
-  maybeDescendant: Scope | typeof rootScope,
-  scope: Scope | typeof rootScope = currentScope
-): boolean => {
-  if (maybeDescendant !== rootScope) {
-    assertScopeNotDisposed(maybeDescendant);
-  }
-  while (scope !== maybeDescendant) {
-    if (maybeDescendant === rootScope) {
-      return false;
-    }
-    maybeDescendant = maybeDescendant[parentSymbol] ?? rootScope;
-  }
-  return true;
-};
-
-/**
- * If `scope` is provided, looks for the key only in `scope`'s ancestors, not
- * `scope` itself, so unlike other functions,
- *
- * ```
- * console.log(getContext(key, defaultValue, scope));
- * ```
- *
- * is not equivalent to
- *
- * ```
- * runInScope(() => {
- *   console.log(getContext(key, defaultValue));
- * }, scope);
- * ```
- */
 export const getContext = <Key extends keyof Scope, DefaultValue = undefined>(
   key: Key,
-  defaultValue?: DefaultValue,
-  scope?: Scope
+  defaultValue?: DefaultValue
 ): Required<Scope>[Key] | DefaultValue => {
-  if (scope) {
-    assertScopeNotDisposed(scope);
-    scope = scope[parentSymbol];
-  } else if (currentScope !== rootScope) {
-    scope = currentScope;
-    assertScopeNotDisposed(scope);
-  }
+  let scope = currentScope;
   while (scope) {
     if (key in scope) {
       return scope[key] as Required<Scope>[Key];
@@ -122,85 +57,93 @@ export const getContext = <Key extends keyof Scope, DefaultValue = undefined>(
   return defaultValue as DefaultValue;
 };
 
-export const errScope = (
-  error: unknown,
-  scope: Scope | typeof rootScope = currentScope
-): void => {
-  let err: ((error: unknown) => void) | undefined;
-  if (scope !== rootScope) {
-    if (errSymbol in scope) {
-      assertScopeNotDisposed(scope);
-      err = scope[errSymbol];
-    } else {
-      err = getContext(errSymbol, undefined, scope);
-    }
-  }
-  if (err) {
-    try {
-      err(error);
-      return;
-    } catch (newError) {
-      error = newError;
-    }
-  }
-  queueMicrotask(() => {
-    throw error;
-  });
-};
+export const isScopeRunning = (scope: Scope): boolean => runningSymbol in scope;
 
-export const runInScope = (
-  callback: () => void,
-  scope: Scope | typeof rootScope
-): void => {
-  if (scope !== rootScope) {
-    assertScopeNotDisposed(scope);
+export const runInScope: {
+  <T>(callback: () => T, scope: Scope): T | void;
+} = <T>(callback: () => T, scope: Scope | undefined): T | void => {
+  if (disposedSymbol in scope!) {
+    throw new Error("You cannot run a callback in a disposed scope.");
   }
+  const outerRunning = runningSymbol in scope!;
   const outerScope = currentScope;
+  scope![runningSymbol] = true;
   currentScope = scope;
   try {
-    callback();
+    try {
+      return callback();
+    } finally {
+      if (!outerRunning) {
+        delete (scope as Scope)[runningSymbol];
+      }
+      currentScope = outerScope;
+    }
   } catch (error) {
-    errScope(error, scope);
-  } finally {
-    currentScope = outerScope;
+    //  We dispose before calling the error handler (and thus passing control
+    // to the client) to make sure that once a scope errs, the clint can't run
+    // a callback in it.
+
+    // eslint-disable-next-line no-use-before-define
+    disposeScope(scope!);
+
+    // This is much the same as calling `getContext`, but we're doing it this
+    // way as a performance optimization.
+    do {
+      if (errSymbol in scope!) {
+        break;
+      }
+      scope = scope![parentSymbol];
+    } while (scope);
+
+    if (scope) {
+      try {
+        scope[errSymbol]!(error);
+        return;
+      } catch (newError) {
+        error = newError;
+      }
+    }
+    queueMicrotask(() => {
+      throw error;
+    });
   }
 };
 
-export const onDispose = (
-  disposable: () => void,
-  scope: Scope | typeof rootScope = currentScope
-) => {
-  if (scope === rootScope) {
-    throw new Error(
-      "`onDispose` can only be called within a scope other than `rootScope`."
-    );
+export const onDispose = (disposable: () => void) => {
+  if (!currentScope) {
+    throw new Error("`onDispose` must be called within a `Scope`.");
   }
-  assertScopeNotDisposed(scope);
-  if (disposablesSymbol in scope) {
-    if (Array.isArray(scope[disposablesSymbol])) {
-      scope[disposablesSymbol].push(disposable);
+  if (disposablesSymbol in currentScope) {
+    if (Array.isArray(currentScope[disposablesSymbol])) {
+      currentScope[disposablesSymbol].push(disposable);
     } else {
-      scope[disposablesSymbol] = [scope[disposablesSymbol], disposable];
+      currentScope[disposablesSymbol] = [
+        currentScope[disposablesSymbol],
+        disposable,
+      ];
     }
   } else {
-    scope[disposablesSymbol] = disposable;
+    currentScope[disposablesSymbol] = disposable;
   }
 };
 
-export const isScopeDisposed = (
-  scope: Scope | typeof rootScope = currentScope
-): boolean => {
-  if (scope !== rootScope) {
-    return disposedSymbol in scope;
-  }
-  return false;
-};
+export const isScopeDisposed = (scope: Scope): boolean =>
+  disposedSymbol in scope;
 
 /**
  * Marks `scope` and its descendants as disposed, and returns the "next" scope
  * from the last scope it traverses.
  */
 const markAsDisposed = (scope: Scope): Scope | undefined => {
+  // Since this check is made for the scope and all of its descendants before
+  // actually marking any scope as disposed or in general making any writes, we
+  // will not end up in a half-disposed state.
+  if (runningSymbol in scope) {
+    throw new Error(
+      "You cannot dispose a scope from inside a callback run within that scope or that scope's descendant scope."
+    );
+  }
+
   let next = scope[nextSymbol];
   while (next && next[parentSymbol] === scope) {
     next = markAsDisposed(next);
@@ -247,7 +190,9 @@ const runDisposables = (scope: Scope): Scope | undefined => {
 };
 
 export const disposeScope = (scope: Scope): void => {
-  assertScopeNotDisposed(scope);
+  if (disposedSymbol in scope) {
+    throw new Error("The scope is already disposed.");
+  }
   // Make sure the client will not be able to dispose scopes or create
   // disposables from inside disposables.
   markAsDisposed(scope);

@@ -1,11 +1,12 @@
 import {
   Scope,
+  createRootScope,
   createScope,
   disposeScope,
   getContext,
   isScopeDisposed,
+  isScopeRunning,
   onDispose,
-  rootScope,
   runInScope,
 } from "./scope";
 
@@ -13,7 +14,6 @@ const parentsSymbol = Symbol("parents");
 const childrenSymbol = Symbol("children");
 const scopeSymbol = Symbol("scope");
 const checkSymbol = Symbol("check");
-const runningSymbol = Symbol("running");
 const callbackSymbol = Symbol("callback");
 
 interface Subject {
@@ -64,13 +64,10 @@ declare module "./scope" {
      * Used in `[scopeSymbol]` of a `Reaction` and points to that reaction.
      */
     [checkSymbol]?: LazyReaction | Effect;
-    /**
-     * Used in `[scopeSymbol]` of a `Reaction` and points to that reaction.
-     */
-    [runningSymbol]?: LazyReaction | Effect;
   }
 }
 
+let currentReaction: LazyReaction | Effect | undefined;
 /**
  * As part of a perf optimization trick, when running a reaction, we bump
  * `unchangedChildrenCount` until the children array diverges from the old
@@ -87,7 +84,7 @@ const pushReaction = (reaction: LazyReaction | Effect, dirty?: boolean) => {
   // TODO: handle the case of cyclical dependency?
 
   // If the reaction is in "clean" or "check" state and not currently running.
-  if (scopeSymbol in reaction && !(runningSymbol in reaction[scopeSymbol])) {
+  if (scopeSymbol in reaction && !isScopeRunning(reaction[scopeSymbol])) {
     // If the reaction is clean.
     if (!(checkSymbol in reaction[scopeSymbol])) {
       if (parentsSymbol in reaction) {
@@ -179,9 +176,15 @@ export const push: {
   maybeProcessQueues();
 };
 
+const createEffectScope = () =>
+  // TODO error handling
+  createScope();
+
 const runReaction = (reaction: LazyReaction | Effect) => {
+  const outerCurrentReaction = currentReaction;
   const outerNewChildren = newChildren;
   const outerUnchangedChildrenCount = unchangedChildrenCount;
+  currentReaction = reaction;
   newChildren = undefined as typeof newChildren;
   unchangedChildrenCount = 0;
   let callback: () => void;
@@ -190,14 +193,12 @@ const runReaction = (reaction: LazyReaction | Effect) => {
   } else {
     callback = reaction;
   }
-  reaction[scopeSymbol] = createScope(
-    // TODO error handling
-    undefined,
-    callbackSymbol in reaction ? reaction : rootScope
-  );
-  reaction[scopeSymbol][runningSymbol] = reaction;
+  reaction[scopeSymbol] =
+    callbackSymbol in reaction
+      ? runInScope(createEffectScope, reaction)!
+      : // TODO error handling
+        createRootScope();
   runInScope(callback, reaction[scopeSymbol]);
-  delete reaction[scopeSymbol][runningSymbol];
   if (newChildren) {
     removeFromChildren(reaction, unchangedChildrenCount);
     if (childrenSymbol in reaction && unchangedChildrenCount > 0) {
@@ -228,8 +229,20 @@ const runReaction = (reaction: LazyReaction | Effect) => {
     removeFromChildren(reaction, unchangedChildrenCount);
     reaction[childrenSymbol].length = unchangedChildrenCount;
   }
+  currentReaction = outerCurrentReaction;
   newChildren = outerNewChildren;
   unchangedChildrenCount = outerUnchangedChildrenCount;
+};
+
+/**
+ * Sweep reactions that are ancestor scopes of the current scope.
+ */
+const sweepAncestorScopes = () => {
+  const check = getContext(checkSymbol);
+  if (check) {
+    // eslint-disable-next-line no-use-before-define
+    sweep(check);
+  }
 };
 
 /**
@@ -247,10 +260,7 @@ const sweep = (reaction: LazyReaction | Effect) => {
     // effect was created and that may re-run. If it does get re-run, this
     // effect would be disposed, so we sweep the ancestor first, and return
     // early if we end up disposed.
-    const check = getContext(checkSymbol, undefined, reaction);
-    if (check) {
-      sweep(check);
-    }
+    runInScope(sweepAncestorScopes, reaction);
     if (isScopeDisposed(reaction)) {
       return;
     }
@@ -290,11 +300,10 @@ export const pull: {
   // client.
   subject: Subject | LazyReaction
 ) => {
-  const reaction = getContext(runningSymbol);
-  if (reaction) {
+  if (currentReaction) {
     if (
       !newChildren &&
-      reaction[childrenSymbol]?.[unchangedChildrenCount] === subject
+      currentReaction[childrenSymbol]?.[unchangedChildrenCount] === subject
     ) {
       unchangedChildrenCount++;
     } else if (newChildren) {

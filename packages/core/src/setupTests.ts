@@ -11,10 +11,10 @@ afterEach(() => {
 });
 
 /**
- * When this symbol is added as a key to an object (with some name string as
- * value), we will represent this object in snapshots with just "[Object
- * <name>]" or "[Function <name>]" unless it's the top-level named object, which
- * is serialized normally.
+ * When this symbol is added as a key to an object/function (with some name
+ * string as value), we will represent this object/function in snapshots with
+ * just "[Object <name>]" or "[Function <name>]" unless it's the top-level named
+ * non-function object, which is serialized normally.
  */
 export const nameSymbol = Symbol("name");
 
@@ -27,6 +27,9 @@ expect.addSnapshotSerializer({
       typeof value === "function") &&
     nameSymbol in value,
   serialize: (value, config, indentation, depth, refs, printer) => {
+    if (typeof value === "function") {
+      return `[Function ${value[nameSymbol]}]`;
+    }
     if (valueToSkip === undefined) {
       valueToSkip = value;
       try {
@@ -35,16 +38,11 @@ expect.addSnapshotSerializer({
         valueToSkip = undefined;
       }
     }
-    return `[${typeof value === "function" ? "Function" : "Object"} ${
-      value[nameSymbol]
-    }]`;
+    return `[Object ${value[nameSymbol]}]`;
   },
 });
 
-/**
- * Returns a function that returns "<base>1", "<base>2", etc.
- */
-export const getNumberedString = (base: string) => {
-  let index = 0;
-  return () => `${base}${++index}`;
-};
+export const hasSymbol = (object: object, name: string) =>
+  Reflect.ownKeys(object).some(
+    (symbol) => symbol.toString() === `Symbol(${name})`
+  );
