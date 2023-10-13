@@ -14,6 +14,7 @@ const parentsSymbol = Symbol("parents");
 const childrenSymbol = Symbol("children");
 const scopeSymbol = Symbol("scope");
 const checkSymbol = Symbol("check");
+const returnValueSymbol = Symbol("value");
 const callbackSymbol = Symbol("callback");
 
 interface Subject {
@@ -45,7 +46,8 @@ interface Reaction {
 }
 
 interface LazyReaction extends Reaction, Subject {
-  (): void;
+  (): unknown;
+  [returnValueSymbol]?: unknown;
 }
 
 /**
@@ -154,6 +156,7 @@ const maybeProcessQueues = () => {
           disposeScope(lazyReaction[scopeSymbol]);
           delete lazyReaction[scopeSymbol];
         }
+        delete lazyReaction[returnValueSymbol];
       }
     }
     disposalQueue.length = 0;
@@ -187,18 +190,22 @@ const runReaction = (reaction: LazyReaction | Effect) => {
   currentReaction = reaction;
   newChildren = undefined as typeof newChildren;
   unchangedChildrenCount = 0;
-  let callback: () => void;
+  // If it's an effect.
   if (callbackSymbol in reaction) {
-    callback = reaction[callbackSymbol];
+    reaction[scopeSymbol] = runInScope(createEffectScope, reaction)!;
+    runInScope(reaction[callbackSymbol], reaction[scopeSymbol]);
   } else {
-    callback = reaction;
+    // TODO error handling
+    reaction[scopeSymbol] = createRootScope();
+    const returnValue = runInScope(reaction, reaction[scopeSymbol]);
+    const shouldPush =
+      returnValueSymbol in reaction &&
+      reaction[returnValueSymbol] !== returnValue;
+    reaction[returnValueSymbol] = returnValue;
+    if (shouldPush) {
+      push(reaction);
+    }
   }
-  reaction[scopeSymbol] =
-    callbackSymbol in reaction
-      ? runInScope(createEffectScope, reaction)!
-      : // TODO error handling
-        createRootScope();
-  runInScope(callback, reaction[scopeSymbol]);
   if (newChildren) {
     removeFromChildren(reaction, unchangedChildrenCount);
     if (childrenSymbol in reaction && unchangedChildrenCount > 0) {
@@ -294,7 +301,9 @@ const sweep = (reaction: LazyReaction | Effect) => {
 };
 
 export const pull: {
-  <T>(subject: T & (T extends Function ? () => void : object)): void;
+  <Subject, ReturnValue = void>(
+    subject: Subject & (Subject extends Function ? () => ReturnValue : object)
+  ): ReturnValue;
 } = (
   // This cannot be an `Effect` because we're not exposing effects to the
   // client.
@@ -313,6 +322,7 @@ export const pull: {
     }
     if (typeof subject === "function") {
       sweep(subject);
+      return subject[returnValueSymbol] as any;
     }
   } else {
     throw new Error(
