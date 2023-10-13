@@ -165,6 +165,15 @@ test("runInScope: case of no errors", () => {
   const b = runInScope(createScope, a)!;
   b[contextKey1] = 2;
 
+  // Test returned type.
+
+  // $ExpectType number | void
+  runInScope(() => 1, a);
+  // $ExpectType void
+  runInScope(() => {}, a);
+  // $ExpectType void | undefined
+  runInScope(() => undefined, a);
+
   // Make sure the callback is run in the right context and state is restored
   // afterwards.
   runInScope(() => {
