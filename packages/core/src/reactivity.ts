@@ -325,10 +325,10 @@ export const pull: {
   // client.
   subject: Subject | LazyReaction
 ) => {
+  if (scopeSymbol in subject && isScopeRunning(subject[scopeSymbol])) {
+    throw new Error("Cyclical dependency.");
+  }
   if (currentReaction) {
-    if (scopeSymbol in subject && isScopeRunning(subject[scopeSymbol])) {
-      throw new Error("Cyclical dependency.");
-    }
     if (
       !newChildren &&
       currentReaction[childrenSymbol]?.[unchangedChildrenCount] === subject
@@ -339,17 +339,13 @@ export const pull: {
     } else {
       newChildren = [subject];
     }
-    if (typeof subject === "function") {
-      sweep(subject);
-      if (errorSymbol in subject) {
-        throw subject[errorSymbol];
-      }
-      return subject[returnValueSymbol] as any;
+  }
+  if (typeof subject === "function") {
+    sweep(subject);
+    if (errorSymbol in subject) {
+      throw subject[errorSymbol];
     }
-  } else {
-    throw new Error(
-      "`pull` can only be called synchronously within the `Scope` of a function passed to `createEffect` or `pull`."
-    );
+    return subject[returnValueSymbol] as any;
   }
 };
 
