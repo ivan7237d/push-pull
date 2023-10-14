@@ -360,5 +360,4 @@ export const createEffect = (callback: () => void): void => {
     removeFromChildren(effect, 0);
   });
   sweep(effect);
-  // TODO: process disposal queue.
 };
