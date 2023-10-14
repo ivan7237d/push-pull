@@ -15,6 +15,7 @@ const childrenSymbol = Symbol("children");
 const scopeSymbol = Symbol("scope");
 const checkSymbol = Symbol("check");
 const returnValueSymbol = Symbol("value");
+const errorSymbol = Symbol("error");
 const callbackSymbol = Symbol("callback");
 
 interface Subject {
@@ -26,18 +27,16 @@ interface Subject {
  * In the context of the [three-colors
  * algorithm](https://dev.to/modderme123/super-charging-fine-grained-reactive-performance-47ph),
  *
- * - "clean" state = `[scopeSymbol]` is present and the scope has no
- *   `[checkSymbol]`,
+ * - "clean" state = either `[errorSymbol]` is present, or `[scopeSymbol]` is
+ *   present and points to a scope that has no `[checkSymbol]`,
  *
- * - "check" state = `[scopeSymbol]` is present and the scope has
- *   `[checkSymbol]`,
+ * - "check" state = `[errorSymbol]` is absent, `[scopeSymbol]` is present and
+ *   points to a scope that has `[checkSymbol]`,
  *
- * - "dirty" state = absent `[scopeSymbol]`.
+ * - "dirty" state = absent `[errorSymbol]` and `[scopeSymbol]`.
  *
- * What that implies is that marking a reaction as dirty is the same operation
- * as disposing the scope, and that when we have an effect to sweep, we can use
- * `getContext` to get hold of reactions that created that effect and need to be
- * swept first.
+ * What that implies is that error handling aside, marking a reaction as dirty
+ * is the same operation as disposing the associated scope.
  */
 interface Reaction {
   // eslint-disable-next-line no-use-before-define
@@ -48,6 +47,7 @@ interface Reaction {
 interface LazyReaction extends Reaction, Subject {
   (): unknown;
   [returnValueSymbol]?: unknown;
+  [errorSymbol]?: unknown;
 }
 
 /**
@@ -82,34 +82,44 @@ const effectQueue: Effect[] = [];
 const disposalQueue: LazyReaction[] = [];
 let processingQueues = false;
 
-const pushReaction = (reaction: LazyReaction | Effect, dirty?: boolean) => {
-  // TODO: handle the case of cyclical dependency?
-
-  // If the reaction is in "clean" or "check" state and not currently running.
-  if (scopeSymbol in reaction && !isScopeRunning(reaction[scopeSymbol])) {
-    // If the reaction is clean.
-    if (!(checkSymbol in reaction[scopeSymbol])) {
-      if (parentsSymbol in reaction) {
-        for (let i = 0; i < reaction[parentsSymbol].length; i++) {
-          pushReaction(reaction[parentsSymbol][i]!, false);
+/**
+ * Makes sure ancestors are marked as at least "check", and if `dirty` is
+ * `true`, also that parents are marked as dirty. Queues up any effects that are
+ * no longer clean.
+ */
+const markAncestors = (subject: Subject | LazyReaction, dirty: boolean) => {
+  if (parentsSymbol in subject) {
+    for (let i = 0; i < subject[parentsSymbol].length; i++) {
+      const reaction = subject[parentsSymbol][i]!;
+      if (errorSymbol in reaction) {
+        delete reaction[errorSymbol];
+        markAncestors(reaction, false);
+      } else if (
+        scopeSymbol in reaction &&
+        !isScopeRunning(reaction[scopeSymbol])
+      ) {
+        // If the reaction is clean.
+        if (!(checkSymbol in reaction[scopeSymbol])) {
+          if (dirty) {
+            disposeScope(reaction[scopeSymbol]);
+            delete reaction[scopeSymbol];
+          } else {
+            reaction[scopeSymbol][checkSymbol] = reaction;
+          }
+          // If it's an effect.
+          if (callbackSymbol in reaction) {
+            effectQueue.push(reaction);
+          } else {
+            markAncestors(reaction, false);
+          }
+        } else if (dirty) {
+          // Here the reaction is in "check" state, all its ancestors have
+          // already been marked as at least "check", and if it's an effect,
+          // it's been added to the effect queue.
+          disposeScope(reaction[scopeSymbol]);
+          delete reaction[scopeSymbol];
         }
       }
-      // If it's an effect.
-      if (callbackSymbol in reaction) {
-        effectQueue.push(reaction);
-      }
-      if (dirty) {
-        disposeScope(reaction[scopeSymbol]);
-        delete reaction[scopeSymbol];
-      } else {
-        reaction[scopeSymbol][checkSymbol] = reaction;
-      }
-    } else if (dirty) {
-      // Here the reaction is in "check" state, all its ancestors have already
-      // been marked as (at least) "check", and if it's an effect, it's been
-      // added to the effect queue.
-      disposeScope(reaction[scopeSymbol]);
-      delete reaction[scopeSymbol];
     }
   }
 };
@@ -157,6 +167,7 @@ const maybeProcessQueues = () => {
           delete lazyReaction[scopeSymbol];
         }
         delete lazyReaction[returnValueSymbol];
+        delete lazyReaction[errorSymbol];
       }
     }
     disposalQueue.length = 0;
@@ -171,17 +182,14 @@ export const push: {
   // client.
   subject: Subject | LazyReaction
 ) => {
-  if (parentsSymbol in subject) {
-    for (let i = 0; i < subject[parentsSymbol].length; i++) {
-      pushReaction(subject[parentsSymbol][i]!, true);
-    }
-  }
+  markAncestors(subject, true);
   maybeProcessQueues();
 };
 
-const createEffectScope = () =>
-  // TODO error handling
-  createScope();
+const onLazyReactionError = (error: unknown) => {
+  delete (currentReaction as LazyReaction)[scopeSymbol];
+  (currentReaction as LazyReaction)[errorSymbol] = error;
+};
 
 const runReaction = (reaction: LazyReaction | Effect) => {
   const outerCurrentReaction = currentReaction;
@@ -192,18 +200,23 @@ const runReaction = (reaction: LazyReaction | Effect) => {
   unchangedChildrenCount = 0;
   // If it's an effect.
   if (callbackSymbol in reaction) {
-    reaction[scopeSymbol] = runInScope(createEffectScope, reaction)!;
+    reaction[scopeSymbol] = runInScope(createScope, reaction)!;
     runInScope(reaction[callbackSymbol], reaction[scopeSymbol]);
   } else {
-    // TODO error handling
-    reaction[scopeSymbol] = createRootScope();
+    reaction[scopeSymbol] = createRootScope(onLazyReactionError);
     const returnValue = runInScope(reaction, reaction[scopeSymbol]);
-    const shouldPush =
-      returnValueSymbol in reaction &&
-      reaction[returnValueSymbol] !== returnValue;
-    reaction[returnValueSymbol] = returnValue;
-    if (shouldPush) {
-      push(reaction);
+    if (errorSymbol in reaction) {
+      delete reaction[returnValueSymbol];
+      markAncestors(reaction, true);
+    } else {
+      if (
+        returnValueSymbol in reaction &&
+        reaction[returnValueSymbol] !== returnValue
+      ) {
+        // TODO: what if the client pulls from onDispose
+        markAncestors(reaction, true);
+      }
+      reaction[returnValueSymbol] = returnValue;
     }
   }
   if (newChildren) {
@@ -257,7 +270,10 @@ const sweepAncestorScopes = () => {
  */
 const sweep = (reaction: LazyReaction | Effect) => {
   // If the reaction is clean.
-  if (scopeSymbol in reaction && !(checkSymbol in reaction[scopeSymbol])) {
+  if (
+    errorSymbol in reaction ||
+    (scopeSymbol in reaction && !(checkSymbol in reaction[scopeSymbol]))
+  ) {
     return;
   }
 
@@ -310,6 +326,9 @@ export const pull: {
   subject: Subject | LazyReaction
 ) => {
   if (currentReaction) {
+    if (scopeSymbol in subject && isScopeRunning(subject[scopeSymbol])) {
+      throw new Error("Cyclical dependency.");
+    }
     if (
       !newChildren &&
       currentReaction[childrenSymbol]?.[unchangedChildrenCount] === subject
@@ -322,6 +341,9 @@ export const pull: {
     }
     if (typeof subject === "function") {
       sweep(subject);
+      if (errorSymbol in subject) {
+        throw subject[errorSymbol];
+      }
       return subject[returnValueSymbol] as any;
     }
   } else {
@@ -338,4 +360,5 @@ export const createEffect = (callback: () => void): void => {
     removeFromChildren(effect, 0);
   });
   sweep(effect);
+  // TODO: process disposal queue.
 };
