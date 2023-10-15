@@ -35,8 +35,13 @@
 
 // https://github.com/preactjs/signals/blob/main/packages/core/test/signal.test.tsx#L1249
 
-import { createMemo } from "../memo";
+import { pull } from "../reactivity";
 import { createSignal } from "../signal";
+
+const createMemo =
+  <Value>(get: () => Value): (() => Value) =>
+  () =>
+    pull(get);
 
 it("should drop X->B->X updates", () => {
   //     X
