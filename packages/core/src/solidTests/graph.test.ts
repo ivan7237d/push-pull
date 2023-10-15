@@ -1,3 +1,9 @@
+/* eslint-disable prefer-const */
+/* eslint-disable no-use-before-define */
+/* eslint-disable prefer-arrow/prefer-arrow-functions */
+/* eslint-disable arrow-body-style */
+/* eslint-disable no-var */
+
 /*
  * MIT License
  *
@@ -29,7 +35,8 @@
 
 // https://github.com/preactjs/signals/blob/main/packages/core/test/signal.test.tsx#L1249
 
-import { createMemo, createSignal } from "../src";
+import { createMemo } from "../memo";
+import { createSignal } from "../signal";
 
 it("should drop X->B->X updates", () => {
   //     X
@@ -45,7 +52,7 @@ it("should drop X->B->X updates", () => {
   const $a = createMemo(() => $x() - 1);
   const $b = createMemo(() => $x() + $a());
 
-  const compute = vi.fn(() => "c: " + $b());
+  const compute = jest.fn(() => "c: " + $b());
   const $c = createMemo(compute);
 
   expect($c()).toBe("c: 3");
@@ -70,7 +77,7 @@ it("should only update every signal once (diamond graph)", () => {
   const $a = createMemo(() => $x());
   const $b = createMemo(() => $x());
 
-  const spy = vi.fn(() => $a() + " " + $b());
+  const spy = jest.fn(() => $a() + " " + $b());
   const $c = createMemo(spy);
 
   expect($c()).toBe("a a");
@@ -97,7 +104,7 @@ it("should only update every signal once (diamond graph + tail)", () => {
   const $b = createMemo(() => $x());
   const $c = createMemo(() => $a() + " " + $b());
 
-  const spy = vi.fn(() => $c());
+  const spy = jest.fn(() => $c());
   const $d = createMemo(spy);
 
   expect($d()).toBe("a a");
@@ -119,7 +126,7 @@ it("should bail out if result is the same", () => {
     return "foo";
   });
 
-  const spy = vi.fn(() => $a());
+  const spy = jest.fn(() => $a());
   const $b = createMemo(spy);
 
   expect($b()).toBe("foo");
@@ -148,12 +155,12 @@ it("should only update every signal once (jagged diamond graph + tails)", () => 
   const $b = createMemo(() => $x());
   const $c = createMemo(() => $b());
 
-  const dSpy = vi.fn(() => $a() + " " + $c());
+  const dSpy = jest.fn(() => $a() + " " + $c());
   const $d = createMemo(dSpy);
 
-  const eSpy = vi.fn(() => $d());
+  const eSpy = jest.fn(() => $d());
   const $e = createMemo(eSpy);
-  const fSpy = vi.fn(() => $d());
+  const fSpy = jest.fn(() => $d());
   const $f = createMemo(fSpy);
 
   expect($e()).toBe("a a");
@@ -200,7 +207,7 @@ it("should ensure subs update even if one dep is static", () => {
     return "c";
   });
 
-  const spy = vi.fn(() => $a() + " " + $b());
+  const spy = jest.fn(() => $a() + " " + $b());
   const $c = createMemo(spy);
 
   expect($c()).toBe("a c");
@@ -232,7 +239,7 @@ it("should ensure subs update even if two deps mark it clean", () => {
     return "d";
   });
 
-  const spy = vi.fn(() => $b() + " " + $c() + " " + $d());
+  const spy = jest.fn(() => $b() + " " + $c() + " " + $d());
   const $e = createMemo(spy);
 
   expect($e()).toBe("a c d");
@@ -255,30 +262,21 @@ it("propagates in topological order", () => {
   //
   var seq = "",
     [a1, setA1] = createSignal(false),
-    b1 = createMemo(
-      () => {
-        a1();
-        seq += "b1";
-      },
-      undefined,
-      { equals: false }
-    ),
-    b2 = createMemo(
-      () => {
-        a1();
-        seq += "b2";
-      },
-      undefined,
-      { equals: false }
-    ),
-    c1 = createMemo(
-      () => {
-        b1(), b2();
-        seq += "c1";
-      },
-      undefined,
-      { equals: false }
-    );
+    b1 = createMemo(() => {
+      a1();
+      seq += "b1";
+      return Symbol();
+    }),
+    b2 = createMemo(() => {
+      a1();
+      seq += "b2";
+      return Symbol();
+    }),
+    c1 = createMemo(() => {
+      b1(), b2();
+      seq += "c1";
+      return Symbol();
+    });
 
   c1();
   seq = "";
@@ -362,11 +360,11 @@ it("only propagates once with exponential convergence", () => {
 });
 
 it("does not trigger downstream computations unless changed", () => {
-  const [s1, set] = createSignal(1, { equals: false });
+  const [s1, set] = createSignal(0);
   let order = "";
   const t1 = createMemo(() => {
     order += "t1";
-    return s1();
+    return Math.max(s1(), 1);
   });
   const t2 = createMemo(() => {
     order += "c1";
@@ -571,7 +569,7 @@ it("does not update subsequent pending computations after stale invocations", ()
 });
 
 it("evaluates stale computations before dependees when trackers stay unchanged", () => {
-  let [s1, set] = createSignal(1, { equals: false });
+  let [s1, set] = createSignal(0);
   let order = "";
   let t1 = createMemo(() => {
     order += "t1";
@@ -581,14 +579,11 @@ it("evaluates stale computations before dependees when trackers stay unchanged",
     order += "t2";
     return s1() > 2;
   });
-  let c1 = createMemo(
-    () => {
-      order += "c1";
-      s1();
-    },
-    undefined,
-    { equals: false }
-  );
+  let c1 = createMemo(() => {
+    order += "c1";
+    Math.max(s1(), 1);
+    return Symbol();
+  });
   const c2 = createMemo(() => {
     order += "c2";
     t1();
@@ -631,3 +626,9 @@ it("correctly marks downstream computations as stale on change", () => {
   c3();
   expect(order).toBe("t1c1c2c3");
 });
+
+/* eslint-enable prefer-const */
+/* eslint-enable no-use-before-define */
+/* eslint-enable prefer-arrow/prefer-arrow-functions */
+/* eslint-enable arrow-body-style */
+/* eslint-enable no-var */
