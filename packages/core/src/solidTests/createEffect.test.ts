@@ -1,4 +1,3 @@
-/* eslint-disable arrow-body-style */
 /* eslint-disable @typescript-eslint/no-confusing-void-expression */
 /* eslint-disable prefer-arrow/prefer-arrow-functions */
 /*
@@ -316,3 +315,6 @@ it.skip("should run parent effect before child effect", () => {
   setX(1);
   expect(calls).toBe(2);
 });
+
+/* eslint-enable @typescript-eslint/no-confusing-void-expression */
+/* eslint-enable prefer-arrow/prefer-arrow-functions */
