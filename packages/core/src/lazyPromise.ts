@@ -21,7 +21,7 @@ export interface LazyPromise<Value, Error> {
 export const createLazyPromise = <Value, Error>(
   produce: (...publisher: Publisher<Value, Error>) => void
 ): LazyPromise<Value, Error> => {
-  let value: Value | typeof voidSymbol;
+  let value: Value | typeof voidSymbol = voidSymbol;
 
   const lazyReaction = () => {
     produce(
