@@ -267,10 +267,8 @@ it("should handle looped effects", () => {
 
   const [$value, setValue] = createSignal(0);
 
-  let x = 0;
   runInScope(() => {
     createEffect(() => {
-      x++;
       values.push($value());
       for (let i = 0; i < loop; i++) {
         createEffect(() => {
