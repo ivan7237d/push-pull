@@ -355,7 +355,8 @@ export const createEffect = (callback: () => void): void => {
   effect[callbackSymbol] = callback;
   onDispose(() => {
     removeFromChildren(effect, 0);
-    // TODO: process disposal queue.
+    // TODO: process just the disposal queue.
+    maybeProcessQueues();
   });
   sweep(effect);
 };
