@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-confusing-void-expression */
 /*
  * MIT License
  *
@@ -27,26 +28,24 @@
  * https://github.com/solidjs/signals/tree/dcf7521abad59cacce53a881efd5191627cc46c6/tests
  */
 
-import { createEffect, createRoot, flushSync, onCleanup } from "../src";
-
-afterEach(() => flushSync());
+import { createEffect } from "../reactivity";
+import { createScope, disposeScope, onDispose, runInScope } from "../scope";
 
 it("should be invoked when computation is disposed", () => {
-  const disposeA = vi.fn();
-  const disposeB = vi.fn();
-  const disposeC = vi.fn();
+  const disposeA = jest.fn();
+  const disposeB = jest.fn();
+  const disposeC = jest.fn();
 
-  const stopEffect = createRoot((dispose) => {
+  const scope = createScope();
+  runInScope(() => {
     createEffect(() => {
-      onCleanup(disposeA);
-      onCleanup(disposeB);
-      onCleanup(disposeC);
+      onDispose(disposeA);
+      onDispose(disposeB);
+      onDispose(disposeC);
     });
+  }, scope);
 
-    return dispose;
-  });
-
-  stopEffect();
+  disposeScope(scope);
 
   expect(disposeA).toHaveBeenCalled();
   expect(disposeB).toHaveBeenCalled();
@@ -54,49 +53,48 @@ it("should be invoked when computation is disposed", () => {
 });
 
 it("should not trigger wrong onCleanup", () => {
-  const dispose = vi.fn();
+  const dispose = jest.fn();
 
-  createRoot(() => {
+  runInScope(() => {
     createEffect(() => {
-      onCleanup(dispose);
+      onDispose(dispose);
     });
 
-    const stopEffect = createRoot((dispose) => {
+    const scope = createScope();
+
+    runInScope(() => {
       createEffect(() => {});
-      return dispose;
-    });
+    }, scope);
 
-    stopEffect();
-    flushSync();
+    disposeScope(scope);
 
     expect(dispose).toHaveBeenCalledTimes(0);
-  });
+  }, createScope());
 });
 
 it("should clean up in reverse order", () => {
-  const disposeParent = vi.fn();
-  const disposeA = vi.fn();
-  const disposeB = vi.fn();
+  const disposeParent = jest.fn();
+  const disposeA = jest.fn();
+  const disposeB = jest.fn();
 
   let calls = 0;
 
-  const stopEffect = createRoot((dispose) => {
+  const scope = createScope();
+  runInScope(() => {
     createEffect(() => {
-      onCleanup(() => disposeParent(++calls));
+      onDispose(() => disposeParent(++calls));
 
       createEffect(() => {
-        onCleanup(() => disposeA(++calls));
+        onDispose(() => disposeA(++calls));
       });
 
       createEffect(() => {
-        onCleanup(() => disposeB(++calls));
+        onDispose(() => disposeB(++calls));
       });
     });
+  }, scope);
 
-    return dispose;
-  });
-
-  stopEffect();
+  disposeScope(scope);
 
   expect(disposeB).toHaveBeenCalled();
   expect(disposeA).toHaveBeenCalled();
@@ -110,28 +108,26 @@ it("should clean up in reverse order", () => {
 it("should dispose all roots", () => {
   const disposals: string[] = [];
 
-  const dispose = createRoot((dispose) => {
-    createRoot(() => {
-      onCleanup(() => disposals.push("SUBTREE 1"));
-      createEffect(() => onCleanup(() => disposals.push("+A1")));
-      createEffect(() => onCleanup(() => disposals.push("+B1")));
-      createEffect(() => onCleanup(() => disposals.push("+C1")));
-    });
+  const scope = createScope();
+  runInScope(() => {
+    runInScope(() => {
+      onDispose(() => disposals.push("SUBTREE 1"));
+      createEffect(() => onDispose(() => disposals.push("+A1")));
+      createEffect(() => onDispose(() => disposals.push("+B1")));
+      createEffect(() => onDispose(() => disposals.push("+C1")));
+    }, createScope());
 
-    createRoot(() => {
-      onCleanup(() => disposals.push("SUBTREE 2"));
-      createEffect(() => onCleanup(() => disposals.push("+A2")));
-      createEffect(() => onCleanup(() => disposals.push("+B2")));
-      createEffect(() => onCleanup(() => disposals.push("+C2")));
-    });
+    runInScope(() => {
+      onDispose(() => disposals.push("SUBTREE 2"));
+      createEffect(() => onDispose(() => disposals.push("+A2")));
+      createEffect(() => onDispose(() => disposals.push("+B2")));
+      createEffect(() => onDispose(() => disposals.push("+C2")));
+    }, createScope());
 
-    onCleanup(() => disposals.push("ROOT"));
+    onDispose(() => disposals.push("ROOT"));
+  }, scope);
 
-    return dispose;
-  });
-
-  flushSync();
-  dispose();
+  disposeScope(scope);
 
   expect(disposals).toMatchInlineSnapshot(`
     [
@@ -147,3 +143,5 @@ it("should dispose all roots", () => {
     ]
   `);
 });
+
+/* eslint-enable @typescript-eslint/no-confusing-void-expression */
