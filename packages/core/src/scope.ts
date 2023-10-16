@@ -140,7 +140,7 @@ const markAsDisposed = (scope: Scope): Scope | undefined => {
   // will not end up in a half-disposed state.
   if (runningSymbol in scope) {
     throw new Error(
-      "You cannot dispose a scope from inside a callback run within that scope or that scope's descendant scope."
+      "You cannot dispose a scope while a callback is running in that scope."
     );
   }
 

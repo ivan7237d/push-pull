@@ -370,7 +370,7 @@ test("disposeScope: no disposing from callback", () => {
     expect(() => {
       disposeScope(a);
     }).toThrowErrorMatchingInlineSnapshot(
-      `"You cannot dispose a scope from inside a callback run within that scope or that scope's descendant scope."`
+      `"You cannot dispose a scope while a callback is running in that scope."`
     );
     log("done");
   }, b);
