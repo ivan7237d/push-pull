@@ -5,7 +5,6 @@ import {
   disposeScope,
   getContext,
   isScopeDisposed,
-  isScopeRunning,
   onDispose,
   runInScope,
 } from "./scope";
@@ -14,6 +13,7 @@ const parentsSymbol = Symbol("parents");
 const childrenSymbol = Symbol("children");
 const scopeSymbol = Symbol("scope");
 const checkSymbol = Symbol("check");
+const runningSymbol = Symbol("running");
 const returnValueSymbol = Symbol("value");
 const errorSymbol = Symbol("error");
 const callbackSymbol = Symbol("callback");
@@ -46,6 +46,7 @@ interface Reaction {
 
 interface LazyReaction extends Reaction, Subject {
   (): unknown;
+  [runningSymbol]?: true;
   [returnValueSymbol]?: unknown;
   [errorSymbol]?: unknown;
 }
@@ -94,10 +95,7 @@ const markAncestors = (subject: Subject | LazyReaction, dirty: boolean) => {
       if (errorSymbol in reaction) {
         delete reaction[errorSymbol];
         markAncestors(reaction, false);
-      } else if (
-        scopeSymbol in reaction &&
-        !isScopeRunning(reaction[scopeSymbol])
-      ) {
+      } else if (scopeSymbol in reaction) {
         // If the reaction is clean.
         if (!(checkSymbol in reaction[scopeSymbol])) {
           if (dirty) {
@@ -187,7 +185,6 @@ export const push: {
 };
 
 const onLazyReactionError = (error: unknown) => {
-  delete (currentReaction as LazyReaction)[scopeSymbol];
   (currentReaction as LazyReaction)[errorSymbol] = error;
 };
 
@@ -200,15 +197,21 @@ const runReaction = (reaction: LazyReaction | Effect) => {
   unchangedChildrenCount = 0;
   // If it's an effect.
   if (callbackSymbol in reaction) {
-    reaction[scopeSymbol] = runInScope(createScope, reaction)!;
-    runInScope(reaction[callbackSymbol], reaction[scopeSymbol]);
+    const scope = runInScope(createScope, reaction)!;
+    runInScope(reaction[callbackSymbol], scope);
+    if (!isScopeDisposed(reaction)) {
+      reaction[scopeSymbol] = scope;
+    }
   } else {
-    reaction[scopeSymbol] = createRootScope(onLazyReactionError);
-    const returnValue = runInScope(reaction, reaction[scopeSymbol]);
+    const scope = createRootScope(onLazyReactionError);
+    reaction[runningSymbol] = true;
+    const returnValue = runInScope(reaction, scope);
+    delete reaction[runningSymbol];
     if (errorSymbol in reaction) {
       delete reaction[returnValueSymbol];
       markAncestors(reaction, true);
     } else {
+      reaction[scopeSymbol] = scope;
       if (
         returnValueSymbol in reaction &&
         reaction[returnValueSymbol] !== returnValue
@@ -323,7 +326,7 @@ export const pull: {
   // client.
   subject: Subject | LazyReaction
 ) => {
-  if (scopeSymbol in subject && isScopeRunning(subject[scopeSymbol])) {
+  if (runningSymbol in subject) {
     throw new Error("Cyclical dependency.");
   }
   if (currentReaction) {
