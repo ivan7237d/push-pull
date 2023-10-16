@@ -30,7 +30,7 @@
 
 /*
  * This file is originally from
- * https://github.com/solidjs/signals/blob/dcf7521abad59cacce53a881efd5191627cc46c6/tests/graph.test.ts
+ * https://github.com/solidjs/signals/tree/dcf7521abad59cacce53a881efd5191627cc46c6/tests
  */
 
 // https://github.com/preactjs/signals/blob/main/packages/core/test/signal.test.tsx#L1249

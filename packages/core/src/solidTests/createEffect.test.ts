@@ -26,7 +26,7 @@
 
 /*
  * This file is originally from
- * https://github.com/solidjs/signals/blob/dcf7521abad59cacce53a881efd5191627cc46c6/tests/createEffect.test.ts
+ * https://github.com/solidjs/signals/tree/dcf7521abad59cacce53a881efd5191627cc46c6/tests
  */
 
 import { createEffect, pull } from "../reactivity";
