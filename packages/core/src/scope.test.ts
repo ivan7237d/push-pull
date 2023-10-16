@@ -6,7 +6,6 @@ import {
   disposeScope,
   getContext,
   isScopeDisposed,
-  isScopeRunning,
   onDispose,
   runInScope,
 } from "./scope";
@@ -199,12 +198,6 @@ test("runInScope: case of no errors", () => {
   ).toThrowErrorMatchingInlineSnapshot(
     `"You cannot run a callback in a disposed scope."`
   );
-});
-
-test("isScopeRunning", () => {
-  const a = createScope();
-  expect(isScopeRunning(a)).toMatchInlineSnapshot(`false`);
-  expect(runInScope(() => isScopeRunning(a), a)).toMatchInlineSnapshot(`true`);
 });
 
 test("runInScope: case of errors", () => {

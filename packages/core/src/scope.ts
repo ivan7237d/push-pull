@@ -57,8 +57,6 @@ export const getContext = <Key extends keyof Scope, DefaultValue = undefined>(
   return defaultValue as DefaultValue;
 };
 
-export const isScopeRunning = (scope: Scope): boolean => runningSymbol in scope;
-
 export const runInScope: {
   <T>(callback: () => T, scope: Scope): T | void;
 } = <T>(callback: () => T, scope: Scope | undefined): T | void => {
