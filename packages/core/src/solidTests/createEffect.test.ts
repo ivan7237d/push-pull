@@ -294,8 +294,7 @@ it("should handle looped effects", () => {
   expect(values.join(",")).toBe("2,2");
 });
 
-// This is essentially run top - we need to solve it.
-it.skip("should run parent effect before child effect", () => {
+it("should run parent effect before child effect", () => {
   const [$x, setX] = createSignal(0);
   const $condition = createMemo(() => $x());
 
