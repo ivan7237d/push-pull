@@ -255,15 +255,10 @@ const runReaction = (reaction: LazyReaction | Effect) => {
 };
 
 /**
- * Sweep reactions that are ancestor scopes of the current scope.
+ * Find the nearest ancestor scope that is the `[scopeSymbol]` of a reaction in
+ * "check" state, and return that reaction.
  */
-const sweepAncestorScopes = () => {
-  const check = getContext(checkSymbol);
-  if (check) {
-    // eslint-disable-next-line no-use-before-define
-    sweep(check);
-  }
-};
+const getOwnerToSweep = () => getContext(checkSymbol);
 
 /**
  * Ensures the `reaction` is clean.
@@ -279,11 +274,14 @@ const sweep = (reaction: LazyReaction | Effect) => {
 
   // If the reaction is an effect.
   if (callbackSymbol in reaction) {
-    // See if there is another effect or a lazy reaction in whose scope this
-    // effect was created and that may re-run. If it does get re-run, this
-    // effect would be disposed, so we sweep the ancestor first, and return
-    // early if we end up disposed.
-    runInScope(sweepAncestorScopes, reaction);
+    // See if there is another effect or a lazy reaction in whose
+    // `[scopeSymbol]` this effect was created and that may re-run. If it does
+    // get re-run, this effect would be disposed, so we sweep the owner first,
+    // and return early if the effect ends up disposed.
+    const ownerToSweep = runInScope(getOwnerToSweep, reaction);
+    if (ownerToSweep) {
+      sweep(ownerToSweep);
+    }
     if (isScopeDisposed(reaction)) {
       return;
     }
