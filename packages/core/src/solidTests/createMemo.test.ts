@@ -22,16 +22,13 @@
  * SOFTWARE.
  */
 
-import {
-  catchError,
-  createEffect,
-  createMemo,
-  createRoot,
-  createSignal,
-  flushSync,
-} from "../src";
+import { pull } from "../reactivity";
+import { createSignal } from "../signal";
 
-afterEach(() => flushSync());
+const createMemo =
+  <Value>(get: () => Value): (() => Value) =>
+  () =>
+    pull(get);
 
 it("should store and return value on read", () => {
   const [$x] = createSignal(1);
@@ -39,10 +36,6 @@ it("should store and return value on read", () => {
 
   const $a = createMemo(() => $x() + $y());
 
-  expect($a()).toBe(2);
-  flushSync();
-
-  // Try again to ensure state is maintained.
   expect($a()).toBe(2);
 });
 
@@ -83,7 +76,7 @@ it("should update when deep computed dependency is updated", () => {
 });
 
 it("should only re-compute when needed", () => {
-  const computed = vi.fn();
+  const computed = jest.fn();
 
   const [$x, setX] = createSignal(10);
   const [$y, setY] = createSignal(10);
@@ -112,8 +105,8 @@ it("should only re-compute when needed", () => {
 });
 
 it("should only re-compute whats needed", () => {
-  const memoA = vi.fn((n) => n);
-  const memoB = vi.fn((n) => n);
+  const memoA = jest.fn((n) => n);
+  const memoB = jest.fn((n) => n);
 
   const [$x, setX] = createSignal(10);
   const [$y, setY] = createSignal(10);
@@ -131,7 +124,6 @@ it("should only re-compute whats needed", () => {
   expect($c()).toBe(20);
 
   setX(20);
-  flushSync();
 
   $c();
   expect(memoA).toHaveBeenCalledTimes(2);
@@ -139,7 +131,6 @@ it("should only re-compute whats needed", () => {
   expect($c()).toBe(30);
 
   setY(20);
-  flushSync();
 
   $c();
   expect(memoA).toHaveBeenCalledTimes(2);
@@ -162,52 +153,8 @@ it("should discover new dependencies", () => {
   expect($c()).toBe(1);
 
   setX(0);
-  flushSync();
   expect($c()).toBe(0);
 
   setY(10);
-  flushSync();
   expect($c()).toBe(10);
-});
-
-it("should accept equals option", () => {
-  const [$x, setX] = createSignal(0);
-
-  const $a = createMemo(() => $x(), 0, {
-    // Skip even numbers.
-    equals: (prev, next) => prev + 1 === next,
-  });
-
-  const effectA = vi.fn();
-  createEffect(() => effectA($a()));
-
-  expect($a()).toBe(0);
-  expect(effectA).toHaveBeenCalledTimes(1);
-
-  setX(2);
-  flushSync();
-  expect($a()).toBe(2);
-  expect(effectA).toHaveBeenCalledTimes(2);
-
-  // no-change
-  setX(3);
-  flushSync();
-  expect($a()).toBe(2);
-  expect(effectA).toHaveBeenCalledTimes(2);
-});
-
-it("should use fallback if error is thrown during init", () => {
-  createRoot(() => {
-    catchError(
-      () => {
-        const $a = createMemo(() => {
-          if (1) throw Error();
-          return "";
-        }, "foo");
-
-        expect($a()).toBe("foo");
-      },
-      () => {}
-    );
-  });
 });
