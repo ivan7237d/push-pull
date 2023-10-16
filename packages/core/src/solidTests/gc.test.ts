@@ -1,3 +1,6 @@
+/* eslint-disable prefer-arrow/prefer-arrow-functions */
+/* eslint-disable prefer-const */
+/* eslint-disable @typescript-eslint/no-unused-vars */
 /*
  * MIT License
  *
@@ -27,19 +30,18 @@
  * https://github.com/solidjs/signals/tree/dcf7521abad59cacce53a881efd5191627cc46c6/tests
  */
 
-import {
-  createEffect,
-  createMemo,
-  createRoot,
-  createSignal,
-  flushSync,
-  getOwner,
-} from "../src";
+import { createEffect, pull } from "../reactivity";
+import { Scope, createScope, disposeScope, runInScope } from "../scope";
+import { createSignal } from "../signal";
+
+const createMemo =
+  <Value>(get: () => Value): (() => Value) =>
+  () =>
+    pull(get);
 
 function gc() {
   return new Promise((resolve) =>
     setTimeout(async () => {
-      flushSync(); // flush call stack (holds a reference)
       global.gc!();
       resolve(void 0);
     }, 0)
@@ -76,20 +78,19 @@ if (global.gc) {
       ref!: WeakRef<any>,
       pointer;
 
-    const dispose = createRoot((dispose) => {
+    const scope = createScope();
+    runInScope(() => {
       ref = new WeakRef(
         (pointer = createMemo(() => {
           $x();
         }))
       );
-
-      return dispose;
-    });
+    }, scope);
 
     await gc();
     expect(ref.deref()).toBeDefined();
 
-    dispose();
+    disposeScope(scope);
     await gc();
     expect(ref.deref()).toBeDefined();
 
@@ -102,19 +103,19 @@ if (global.gc) {
     let [$x, setX] = createSignal(0),
       ref!: WeakRef<any>;
 
-    const dispose = createRoot((dispose) => {
+    let scope: Scope | undefined = createScope();
+    runInScope(() => {
       createEffect(() => {
         $x();
-        ref = new WeakRef(getOwner()!);
+        ref = new WeakRef(createScope());
       });
-
-      return dispose;
-    });
+    }, scope);
 
     await gc();
     expect(ref.deref()).toBeDefined();
 
-    dispose();
+    disposeScope(scope);
+    scope = undefined;
     setX(1);
 
     await gc();
@@ -123,3 +124,7 @@ if (global.gc) {
 } else {
   it("", () => {});
 }
+
+/* eslint-enable prefer-arrow/prefer-arrow-functions */
+/* eslint-enable prefer-const */
+/* eslint-enable @typescript-eslint/no-unused-vars */

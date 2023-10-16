@@ -4,11 +4,11 @@
     "build:module": "tsc --build",
     "build:main": "pnpm --recursive --parallel exec babel build/module --out-dir build/main",
     "build": "run-s --print-label build:*",
-    "test:jest": "jest --passWithNoTests",
+    "test:jest": "node --expose-gc ./node_modules/jest/bin/jest.js --passWithNoTests",
     "test:lint": "eslint .",
     "test:prettier": "prettier --list-different --ignore-unknown '**' '!pnpm-lock.yaml'",
     "test": "pnpm build && run-p --print-label test:*",
-    "watch": "jest --watch"
+    "watch": "node --expose-gc ./node_modules/jest/bin/jest.js --watch"
   },
   "devDependencies": {
     "@babel/cli": "^7.19.3",
