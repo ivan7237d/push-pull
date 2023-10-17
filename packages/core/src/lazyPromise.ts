@@ -1,5 +1,4 @@
 import { createEffect, pull, push } from "./reactivity";
-import { onDispose } from "./scope";
 
 const voidSymbol = Symbol("voidSymbol");
 
@@ -36,16 +35,9 @@ export const createLazyPromise = <Value, Error>(
         push(lazyReaction);
       }
     );
-    // Let error object be garbage-collected when the lazy promise rejects but
-    // the client retains a reference to it.
-    onDispose(() => {
-      error = voidSymbol;
-    });
   };
 
   return ((resolve, reject) => {
-    // Retry when the client re-subscribes.
-    error = voidSymbol;
     createEffect(() => {
       if (value !== voidSymbol) {
         resolve?.(value);
