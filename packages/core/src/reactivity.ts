@@ -360,3 +360,13 @@ export const createEffect = (callback: () => void): void => {
   });
   sweep(effect);
 };
+
+export const untrack = <T>(callback: () => T): T => {
+  const outerCurrentReaction = currentReaction;
+  currentReaction = undefined;
+  try {
+    return callback();
+  } finally {
+    currentReaction = outerCurrentReaction;
+  }
+};
