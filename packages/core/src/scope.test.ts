@@ -204,7 +204,8 @@ test("runInScope: case of errors", () => {
   const a = createScope();
   const b = runInScope(
     () =>
-      createScope((error) => {
+      createScope((error, scope) => {
+        expect(scope).toBe(b);
         log.add(label("error handler for scope b"))(error);
         expect(isScopeDisposed(b)).toMatchInlineSnapshot(`true`);
         throw "error in error handler for scope b";
@@ -212,7 +213,11 @@ test("runInScope: case of errors", () => {
     a
   )!;
   const c = runInScope(
-    () => createScope(log.add(label("error handler for scope c"))),
+    () =>
+      createScope((error, scope) => {
+        expect(scope).toBe(c);
+        log.add(label("error handler for scope c"))(error);
+      }),
     b
   )!;
   const d = runInScope(createScope, c)!;

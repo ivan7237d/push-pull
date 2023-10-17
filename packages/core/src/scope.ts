@@ -13,7 +13,7 @@ export interface Scope {
   [runningSymbol]?: true;
   [disposablesSymbol]?: (() => void) | (() => void)[];
   [disposedSymbol]?: true;
-  [errSymbol]?: (error: unknown) => void;
+  [errSymbol]?: (error: unknown, scope: Scope) => void;
 }
 
 let currentScope: Scope | undefined;
@@ -26,7 +26,9 @@ export const createRootScope = (err?: (error: unknown) => void): Scope => {
   return newScope;
 };
 
-export const createScope = (err?: (error: unknown) => void): Scope => {
+export const createScope = (
+  err?: (error: unknown, scope: Scope) => void
+): Scope => {
   const newScope: Scope = {};
   if (currentScope) {
     newScope[parentSymbol] = currentScope;
@@ -95,7 +97,7 @@ export const runInScope: {
 
     if (scope) {
       try {
-        scope[errSymbol]!(error);
+        scope[errSymbol]!(error, scope);
         return;
       } catch (newError) {
         error = newError;
