@@ -22,6 +22,7 @@ export const createLazyPromise = <Value, Error>(
   produce: (...publisher: Publisher<Value, Error>) => void
 ): LazyPromise<Value, Error> => {
   let value: Value | typeof voidSymbol = voidSymbol;
+  let error: Error | typeof voidSymbol = voidSymbol;
 
   const lazyReaction = () => {
     produce(
@@ -29,14 +30,24 @@ export const createLazyPromise = <Value, Error>(
         value = newValue;
         push(lazyReaction);
       },
-      () => {}
+      (newError) => {
+        error = newError;
+        push(lazyReaction);
+      }
     );
   };
 
   return ((resolve, reject) => {
+    error = voidSymbol;
     createEffect(() => {
       if (value !== voidSymbol) {
         resolve?.(value);
+      } else if (error !== voidSymbol) {
+        if (reject) {
+          reject(error);
+        } else {
+          throw error;
+        }
       } else {
         pull(lazyReaction);
       }
