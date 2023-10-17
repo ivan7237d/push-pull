@@ -18,7 +18,9 @@ export interface Scope {
 
 let currentScope: Scope | undefined;
 
-export const createRootScope = (err?: (error: unknown) => void): Scope => {
+export const createRootScope = (
+  err?: (error: unknown, scope: Scope) => void
+): Scope => {
   const newScope: Scope = {};
   if (err) {
     newScope[errSymbol] = err;
