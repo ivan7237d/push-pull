@@ -18,6 +18,7 @@ export interface Scope {
 
 let currentScope: Scope | undefined;
 
+// TODO use escapeScope instead.
 export const createRootScope = (
   err?: (error: unknown, scope: Scope) => void
 ): Scope => {
@@ -33,6 +34,10 @@ export const createScope = (
 ): Scope => {
   const newScope: Scope = {};
   if (currentScope) {
+    // This would happen in `onDispose` callback.
+    if (disposedSymbol in currentScope) {
+      throw new Error("You cannot create a child scope in a disposed scope.");
+    }
     newScope[parentSymbol] = currentScope;
     newScope[previousSymbol] = currentScope;
     if (currentScope[nextSymbol]) {
@@ -115,6 +120,10 @@ export const onDispose = (disposable: () => void) => {
   if (!currentScope) {
     throw new Error("`onDispose` must be called within a `Scope`.");
   }
+  // This would happen in `onDispose` callback.
+  if (disposedSymbol in currentScope) {
+    throw new Error("You cannot call `onDispose` in a disposed scope.");
+  }
   if (disposablesSymbol in currentScope) {
     if (Array.isArray(currentScope[disposablesSymbol])) {
       currentScope[disposablesSymbol].push(disposable);
@@ -129,8 +138,9 @@ export const onDispose = (disposable: () => void) => {
   }
 };
 
-export const isScopeDisposed = (scope: Scope): boolean =>
-  disposedSymbol in scope;
+export const isScopeDisposed = (
+  scope: Scope | undefined = currentScope
+): boolean => scope !== undefined && disposedSymbol in scope;
 
 /**
  * Marks `scope` and its descendants as disposed, and returns the "next" scope
@@ -167,6 +177,8 @@ const runDisposables = (scope: Scope): Scope | undefined => {
   }
 
   if (scope[disposablesSymbol]) {
+    const outerScope = currentScope;
+    currentScope = scope;
     if (Array.isArray(scope[disposablesSymbol])) {
       for (let i = scope[disposablesSymbol].length - 1; i >= 0; i--) {
         try {
@@ -186,6 +198,7 @@ const runDisposables = (scope: Scope): Scope | undefined => {
         });
       }
     }
+    currentScope = outerScope;
   }
 
   return next;

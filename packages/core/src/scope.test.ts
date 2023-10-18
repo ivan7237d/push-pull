@@ -54,8 +54,7 @@ test("createRootScope", () => {
   `);
 });
 
-test("createScope", () => {
-  // $ExpectType Scope
+test("createScope: creating linked list", () => {
   const a = createScope();
   (a as any)[nameSymbol] = "a";
   expect(a).toMatchInlineSnapshot(`
@@ -107,6 +106,20 @@ test("createScope", () => {
       Symbol(name): "c",
     }
   `);
+});
+
+test("createScope: error if scope is disposed", () => {
+  const a = createScope();
+  runInScope(() => {
+    onDispose(() => {
+      createScope();
+    });
+  }, a);
+  processMockMicrotaskQueue();
+  disposeScope(a);
+  expect(processMockMicrotaskQueue).toThrow(
+    "You cannot create a child scope in a disposed scope."
+  );
 });
 
 test("getContext", () => {
@@ -191,13 +204,6 @@ test("runInScope: case of no errors", () => {
   expect(hasSymbol(a, "running")).toMatchInlineSnapshot(`false`);
   expect(hasSymbol(b, "running")).toMatchInlineSnapshot(`false`);
   expect(getContext(contextKey1)).toMatchInlineSnapshot(`undefined`);
-
-  disposeScope(a);
-  expect(() =>
-    runInScope(() => undefined, a)
-  ).toThrowErrorMatchingInlineSnapshot(
-    `"You cannot run a callback in a disposed scope."`
-  );
 });
 
 test("runInScope: case of errors", () => {
@@ -255,39 +261,84 @@ test("runInScope: case of errors", () => {
   expect(processMockMicrotaskQueue).toThrow("error in a");
 });
 
-test("onDispose", () => {
+test("runInScope: error if scope is disposed", () => {
+  const a = createScope();
+  disposeScope(a);
+  expect(() =>
+    runInScope(() => undefined, a)
+  ).toThrowErrorMatchingInlineSnapshot(
+    `"You cannot run a callback in a disposed scope."`
+  );
+});
+
+test("onDispose: updating disposables", () => {
+  const a = createScope();
+  runInScope(() => {
+    const disposable = () => {};
+    disposable[nameSymbol] = "a";
+    onDispose(disposable);
+  }, a);
+  expect(a).toMatchInlineSnapshot(`
+    {
+      Symbol(disposables): [Function a],
+    }
+  `);
+  runInScope(() => {
+    const disposable = () => {};
+    disposable[nameSymbol] = "b";
+    onDispose(disposable);
+  }, a);
+  expect(a).toMatchInlineSnapshot(`
+    {
+      Symbol(disposables): [
+        [Function a],
+        [Function b],
+      ],
+    }
+  `);
+});
+
+test("onDispose: error if run outside a scope", () => {
   expect(() => {
     onDispose(() => {});
   }).toThrowErrorMatchingInlineSnapshot(
     `"\`onDispose\` must be called within a \`Scope\`."`
   );
+});
 
-  const a = createScope();
+test("onDispose: error if the scope is disposed", () => {
+  const scope = createScope();
   runInScope(() => {
-    onDispose(log.add(label("disposable in a")));
-  }, a);
-  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
-  disposeScope(a);
-  expect(readLog()).toMatchInlineSnapshot(`> [disposable in a]`);
-
-  const b = createScope();
-  runInScope(() => {
-    onDispose(log.add(label("disposable 1 in b")));
-    onDispose(log.add(label("disposable 2 in b")));
-  }, b);
-  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
-  disposeScope(b);
-  expect(readLog()).toMatchInlineSnapshot(`
-    > [disposable 2 in b]
-    > [disposable 1 in b]
-  `);
+    onDispose(() => {
+      expect(() => {
+        onDispose(() => {});
+      }).toThrowErrorMatchingInlineSnapshot(
+        `"You cannot call \`onDispose\` in a disposed scope."`
+      );
+      log("done");
+    });
+  }, scope);
+  disposeScope(scope);
+  expect(readLog()).toMatchInlineSnapshot(`> "done"`);
 });
 
 test("isScopeDisposed", () => {
+  expect(isScopeDisposed()).toMatchInlineSnapshot(`false`);
+
   const a = createScope();
   expect(isScopeDisposed(a)).toMatchInlineSnapshot(`false`);
+
+  runInScope(() => {
+    expect(isScopeDisposed()).toMatchInlineSnapshot(`false`);
+    onDispose(() => {
+      expect(isScopeDisposed()).toMatchInlineSnapshot(`true`);
+      log("done");
+    });
+  }, a);
+
   disposeScope(a);
   expect(isScopeDisposed(a)).toMatchInlineSnapshot(`true`);
+  expect(readLog()).toMatchInlineSnapshot(`> "done"`);
 });
 
 test("disposeScope: calling disposables", () => {
@@ -308,6 +359,34 @@ test("disposeScope: calling disposables", () => {
     > [disposable 2 in b]
     > [disposable 1 in b]
   `);
+});
+
+test("disposeScope: scope in which disposables are called", () => {
+  const a = createScope();
+  a[contextKey1] = 1;
+  const b = runInScope(createScope, a)!;
+  b[contextKey1] = 2;
+  runInScope(() => {
+    onDispose(() =>
+      log.add(label("context value in disposable in a"))(
+        getContext(contextKey1)
+      )
+    );
+  }, a);
+  runInScope(() => {
+    onDispose(() =>
+      log.add(label("context value in disposable in b"))(
+        getContext(contextKey1)
+      )
+    );
+  }, b);
+  disposeScope(a);
+  expect(readLog()).toMatchInlineSnapshot(`
+    > [context value in disposable in b] 2
+    > [context value in disposable in a] 1
+  `);
+  // Check that scope is restored.
+  expect(getContext(contextKey1)).toMatchInlineSnapshot(`undefined`);
 });
 
 test("disposeScope: handling errors in disposables", () => {
