@@ -18,7 +18,6 @@ export interface Scope {
 
 let currentScope: Scope | undefined;
 
-// TODO use escapeScope instead.
 export const createRootScope = (
   err?: (error: unknown, scope: Scope) => void
 ): Scope => {
