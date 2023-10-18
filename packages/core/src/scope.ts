@@ -86,7 +86,7 @@ export const runInScope: {
       currentScope = outerScope;
     }
   } catch (error) {
-    //  We dispose before calling the error handler (and thus passing control
+    // We dispose before calling the error handler (and thus passing control
     // to the client) to make sure that once a scope errs, the clint can't run
     // a callback in it.
 
