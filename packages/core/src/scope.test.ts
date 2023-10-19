@@ -44,12 +44,12 @@ test("createRootScope", () => {
   // $ExpectType Scope
   const a = createRootScope();
   expect(a).toMatchInlineSnapshot(`{}`);
-  const err = () => {};
-  err[nameSymbol] = "err";
-  const b = createRootScope(err);
+  const onError = () => {};
+  onError[nameSymbol] = "onError";
+  const b = createRootScope(onError);
   expect(b).toMatchInlineSnapshot(`
     {
-      Symbol(err): [Function err],
+      Symbol(onError): [Function onError],
     }
   `);
 });
@@ -63,9 +63,9 @@ test("createScope: creating linked list", () => {
     }
   `);
 
-  const err = () => {};
-  err[nameSymbol] = "err";
-  const b = runInScope(() => createScope(err), a)!;
+  const onError = () => {};
+  onError[nameSymbol] = "onError";
+  const b = runInScope(() => createScope(onError), a)!;
   (b as any)[nameSymbol] = "b";
   expect(a).toMatchInlineSnapshot(`
     {
@@ -77,7 +77,7 @@ test("createScope: creating linked list", () => {
     {
       Symbol(parent): [Object a],
       Symbol(previous): [Object a],
-      Symbol(err): [Function err],
+      Symbol(onError): [Function onError],
       Symbol(name): "b",
     }
   `);
@@ -94,7 +94,7 @@ test("createScope: creating linked list", () => {
     {
       Symbol(parent): [Object a],
       Symbol(previous): [Object c],
-      Symbol(err): [Function err],
+      Symbol(onError): [Function onError],
       Symbol(name): "b",
     }
   `);

@@ -4,7 +4,7 @@ const nextSymbol = Symbol("next");
 const runningSymbol = Symbol("running");
 const disposablesSymbol = Symbol("disposables");
 const disposedSymbol = Symbol("disposed");
-const errSymbol = Symbol("err");
+const onErrorSymbol = Symbol("onError");
 
 export interface Scope {
   [parentSymbol]?: Scope;
@@ -13,23 +13,23 @@ export interface Scope {
   [runningSymbol]?: true;
   [disposablesSymbol]?: (() => void) | (() => void)[];
   [disposedSymbol]?: true;
-  [errSymbol]?: (error: unknown, scope: Scope) => void;
+  [onErrorSymbol]?: (error: unknown, scope: Scope) => void;
 }
 
 let currentScope: Scope | undefined;
 
 export const createRootScope = (
-  err?: (error: unknown, scope: Scope) => void
+  onError?: (error: unknown, scope: Scope) => void
 ): Scope => {
   const newScope: Scope = {};
-  if (err) {
-    newScope[errSymbol] = err;
+  if (onError) {
+    newScope[onErrorSymbol] = onError;
   }
   return newScope;
 };
 
 export const createScope = (
-  err?: (error: unknown, scope: Scope) => void
+  onError?: (error: unknown, scope: Scope) => void
 ): Scope => {
   const newScope: Scope = {};
   if (currentScope) {
@@ -45,8 +45,8 @@ export const createScope = (
     }
     currentScope[nextSymbol] = newScope;
   }
-  if (err) {
-    newScope[errSymbol] = err;
+  if (onError) {
+    newScope[onErrorSymbol] = onError;
   }
   return newScope;
 };
@@ -85,9 +85,9 @@ export const runInScope: {
       currentScope = outerScope;
     }
   } catch (error) {
-    // We dispose before calling the error handler (and thus passing control
-    // to the client) to make sure that once a scope errs, the clint can't run
-    // a callback in it.
+    // We dispose before calling the error handler (and thus passing control to
+    // the client) to make sure that once a scope errors, the clint can't run a
+    // callback in it.
 
     // eslint-disable-next-line no-use-before-define
     disposeScope(scope!);
@@ -95,7 +95,7 @@ export const runInScope: {
     // This is much the same as calling `getContext`, but we're doing it this
     // way as a performance optimization.
     do {
-      if (errSymbol in scope!) {
+      if (onErrorSymbol in scope!) {
         break;
       }
       scope = scope![parentSymbol];
@@ -103,7 +103,7 @@ export const runInScope: {
 
     if (scope) {
       try {
-        scope[errSymbol]!(error, scope);
+        scope[onErrorSymbol]!(error, scope);
         return;
       } catch (newError) {
         error = newError;
