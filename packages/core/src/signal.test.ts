@@ -7,6 +7,7 @@ import { createSignal } from "./signal";
 
 test("signal", () => {
   const [signal, setSignal] = createSignal(0);
+  expect(signal()).toMatchInlineSnapshot(`0`);
   runInScope(() => {
     createEffect(() => {
       log.add(label("effect"))(signal());
