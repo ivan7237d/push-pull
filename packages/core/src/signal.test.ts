@@ -6,17 +6,15 @@ import { log } from "./setupTests";
 import { createSignal } from "./signal";
 
 test("signal", () => {
+  const [signal, setSignal] = createSignal(0);
   runInScope(() => {
-    const [signal, setSignal] = createSignal(0);
-    runInScope(() => {
-      createEffect(() => {
-        log.add(label("effect"))(signal());
-      });
-    }, createScope());
-    expect(readLog()).toMatchInlineSnapshot(`> [effect] 0`);
-    setSignal(1);
-    expect(readLog()).toMatchInlineSnapshot(`> [effect] 1`);
-    setSignal(1);
-    expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
+    createEffect(() => {
+      log.add(label("effect"))(signal());
+    });
   }, createScope());
+  expect(readLog()).toMatchInlineSnapshot(`> [effect] 0`);
+  setSignal(1);
+  expect(readLog()).toMatchInlineSnapshot(`> [effect] 1`);
+  setSignal(1);
+  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
 });
