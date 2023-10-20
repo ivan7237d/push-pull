@@ -13,6 +13,7 @@ const parentsSymbol = Symbol("parents");
 const childrenSymbol = Symbol("children");
 const scopeSymbol = Symbol("scope");
 const checkSymbol = Symbol("check");
+const lazyReactionSymbol = Symbol("lazyReaction");
 const runningSymbol = Symbol("running");
 const returnValueSymbol = Symbol("value");
 const errorSymbol = Symbol("error");
@@ -27,20 +28,24 @@ interface Subject {
  * In the context of the [three-colors
  * algorithm](https://dev.to/modderme123/super-charging-fine-grained-reactive-performance-47ph),
  *
- * - "clean" state = either `[errorSymbol]` is present, or `[scopeSymbol]` is
- *   present and points to a scope that has no `[checkSymbol]`,
+ * - "clean" state = `[scopeSymbol]` is present and points to a scope that has
+ *   no `[checkSymbol]`,
  *
- * - "check" state = `[errorSymbol]` is absent, `[scopeSymbol]` is present and
- *   points to a scope that has `[checkSymbol]`,
+ * - "check" state = `[scopeSymbol]` is present and points to a scope that has
+ *   `[checkSymbol]`,
  *
- * - "dirty" state = absent `[errorSymbol]` and `[scopeSymbol]`.
+ * - "dirty" state = absent `[scopeSymbol]`.
  *
- * What that implies is that error handling aside, marking a reaction as dirty
- * is the same operation as disposing the associated scope.
+ * This implies that marking a reaction as dirty is the same operation as
+ * disposing the associated scope.
  */
 interface Reaction {
   // eslint-disable-next-line no-use-before-define
   [childrenSymbol]?: (Subject | LazyReaction)[];
+  /**
+   * The scope in which the reaction is run. When the reaction is re-run, this
+   * scope is disposed and re-created.
+   */
   [scopeSymbol]?: Scope;
 }
 
@@ -64,9 +69,20 @@ interface Effect extends Reaction, Scope {
 declare module "./scope" {
   interface Scope {
     /**
-     * Used in `[scopeSymbol]` of a `Reaction` and points to that reaction.
+     * Used in `[scopeSymbol]` of a `Reaction` and points to that reaction. This
+     * prop is used to indicate that a reaction is in "check" state, and storing
+     * the reaction (rather than say just `true`) as value allows us to retrieve
+     * the owner of an effect and execute it before child.
      */
     [checkSymbol]?: LazyReaction | Effect;
+    /**
+     * Present in `[scopeSymbol]` of a `LazyReaction` and points to that
+     * reaction. This prop is used for a performance optimization where we use a
+     * single global error handler function that handles errors in lazy
+     * reactions, instead of creating a function for each lazy reaction
+     * individually.
+     */
+    [lazyReactionSymbol]?: LazyReaction;
   }
 }
 
@@ -92,10 +108,8 @@ const markAncestors = (subject: Subject | LazyReaction, dirty: boolean) => {
   if (parentsSymbol in subject) {
     for (let i = 0; i < subject[parentsSymbol].length; i++) {
       const reaction = subject[parentsSymbol][i]!;
-      if (errorSymbol in reaction) {
-        delete reaction[errorSymbol];
-        markAncestors(reaction, false);
-      } else if (scopeSymbol in reaction) {
+      // Otherwise it can't get any dirtier.
+      if (scopeSymbol in reaction) {
         // If the reaction is clean.
         if (!(checkSymbol in reaction[scopeSymbol])) {
           if (dirty) {
@@ -176,7 +190,7 @@ const maybeProcessQueues = () => {
 export const push: {
   <T>(subject: T & (T extends Function ? () => void : object)): void;
 } = (
-  // This cannot be an `Effect` because we're not exposing effects to the
+  // This cannot be an `Effect` because we're not exposing effect objects to the
   // client.
   subject: Subject | LazyReaction
 ) => {
@@ -184,12 +198,16 @@ export const push: {
   maybeProcessQueues();
 };
 
-const onLazyReactionError = (error: unknown) => {
-  (currentReaction as LazyReaction)[errorSymbol] = error;
+const onLazyReactionError = (error: unknown, scope: Scope) => {
+  const reaction = scope[lazyReactionSymbol]!;
+  delete reaction[scopeSymbol];
+  reaction[errorSymbol] = error;
+  markAncestors(reaction, true);
+  maybeProcessQueues();
 };
 
 const runReaction = (reaction: LazyReaction | Effect) => {
-  const outerCurrentReaction = currentReaction;
+  const outerReaction = currentReaction;
   const outerNewChildren = newChildren;
   const outerUnchangedChildrenCount = unchangedChildrenCount;
   currentReaction = reaction;
@@ -199,18 +217,16 @@ const runReaction = (reaction: LazyReaction | Effect) => {
   if (callbackSymbol in reaction) {
     const scope = runInScope(createScope, reaction)!;
     runInScope(reaction[callbackSymbol], scope);
-    if (!isScopeDisposed(reaction)) {
+    if (!isScopeDisposed(scope)) {
       reaction[scopeSymbol] = scope;
     }
   } else {
     const scope = createRootScope(onLazyReactionError);
+    scope[lazyReactionSymbol] = reaction;
     reaction[runningSymbol] = true;
     const returnValue = runInScope(reaction, scope);
     delete reaction[runningSymbol];
-    if (errorSymbol in reaction) {
-      delete reaction[returnValueSymbol];
-      markAncestors(reaction, true);
-    } else {
+    if (!(errorSymbol in reaction)) {
       reaction[scopeSymbol] = scope;
       if (
         returnValueSymbol in reaction &&
@@ -252,7 +268,7 @@ const runReaction = (reaction: LazyReaction | Effect) => {
     removeFromChildren(reaction, unchangedChildrenCount);
     reaction[childrenSymbol].length = unchangedChildrenCount;
   }
-  currentReaction = outerCurrentReaction;
+  currentReaction = outerReaction;
   newChildren = outerNewChildren;
   unchangedChildrenCount = outerUnchangedChildrenCount;
 };
@@ -267,7 +283,7 @@ const getOwnerToSweep = () => getContext(checkSymbol);
  * Ensures the `reaction` is clean.
  */
 const sweep = (reaction: LazyReaction | Effect) => {
-  // If the reaction is clean.
+  // If the reaction is clean or has an error.
   if (
     errorSymbol in reaction ||
     (scopeSymbol in reaction && !(checkSymbol in reaction[scopeSymbol]))
@@ -322,12 +338,18 @@ export const pull: {
     subject: Subject & (Subject extends Function ? () => ReturnValue : object)
   ): ReturnValue;
 } = (
-  // This cannot be an `Effect` because we're not exposing effects to the
+  // This cannot be an `Effect` because we're not exposing effect objects to the
   // client.
   subject: Subject | LazyReaction
 ) => {
   if (runningSymbol in subject) {
     throw new Error("Cyclical dependency.");
+  }
+  if (typeof subject === "function") {
+    sweep(subject);
+    if (errorSymbol in subject) {
+      throw subject[errorSymbol];
+    }
   }
   if (currentReaction) {
     if (
@@ -342,10 +364,6 @@ export const pull: {
     }
   }
   if (typeof subject === "function") {
-    sweep(subject);
-    if (errorSymbol in subject) {
-      throw subject[errorSymbol];
-    }
     return subject[returnValueSymbol] as any;
   }
 };
@@ -362,11 +380,11 @@ export const createEffect = (callback: () => void): void => {
 };
 
 export const untrack = <T>(callback: () => T): T => {
-  const outerCurrentReaction = currentReaction;
+  const outerReaction = currentReaction;
   currentReaction = undefined;
   try {
     return callback();
   } finally {
-    currentReaction = outerCurrentReaction;
+    currentReaction = outerReaction;
   }
 };
