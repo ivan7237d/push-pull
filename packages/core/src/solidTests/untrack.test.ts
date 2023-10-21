@@ -29,7 +29,7 @@
  * https://github.com/solidjs/signals/tree/dcf7521abad59cacce53a881efd5191627cc46c6/tests
  */
 
-import { createEffect, pull, untrack } from "../reactivity";
+import { batch, createEffect, pull, untrack } from "../reactivity";
 import { createScope, disposeScope, onDispose, runInScope } from "../scope";
 import { createSignal } from "../signal";
 
@@ -38,10 +38,8 @@ const createMemo =
   () =>
     pull(get);
 
-const wrapInEffect = (callback: () => void) => () => {
-  runInScope(createScope(), () => {
-    createEffect(callback);
-  });
+const wrapInBatch = (callback: () => void) => () => {
+  batch(callback);
 };
 
 it("should not create dependency", () => {
@@ -75,7 +73,7 @@ it("should not create dependency", () => {
 
 it(
   "should not affect deep dependency being created",
-  wrapInEffect(() => {
+  wrapInBatch(() => {
     const effect = jest.fn();
     const memo = jest.fn();
 

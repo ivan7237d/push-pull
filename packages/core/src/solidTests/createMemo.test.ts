@@ -27,8 +27,7 @@
  * https://github.com/solidjs/signals/tree/dcf7521abad59cacce53a881efd5191627cc46c6/tests
  */
 
-import { createEffect, pull } from "../reactivity";
-import { createScope, runInScope } from "../scope";
+import { batch, pull } from "../reactivity";
 import { createSignal } from "../signal";
 
 const createMemo =
@@ -36,10 +35,8 @@ const createMemo =
   () =>
     pull(get);
 
-const wrapInEffect = (callback: () => void) => () => {
-  runInScope(createScope(), () => {
-    createEffect(callback);
-  });
+const wrapInBatch = (callback: () => void) => () => {
+  batch(callback);
 };
 
 it("should store and return value on read", () => {
@@ -89,7 +86,7 @@ it("should update when deep computed dependency is updated", () => {
 
 it(
   "should only re-compute when needed",
-  wrapInEffect(() => {
+  wrapInBatch(() => {
     const computed = jest.fn();
 
     const [$x, setX] = createSignal(10);
@@ -121,7 +118,7 @@ it(
 
 it(
   "should only re-compute whats needed",
-  wrapInEffect(() => {
+  wrapInBatch(() => {
     const memoA = jest.fn((n) => n);
     const memoB = jest.fn((n) => n);
 

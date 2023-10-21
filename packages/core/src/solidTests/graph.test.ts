@@ -35,8 +35,7 @@
 
 // https://github.com/preactjs/signals/blob/main/packages/core/test/signal.test.tsx#L1249
 
-import { createEffect, pull } from "../reactivity";
-import { createScope, runInScope } from "../scope";
+import { batch, pull } from "../reactivity";
 import { createSignal } from "../signal";
 
 const createMemo =
@@ -44,10 +43,8 @@ const createMemo =
   () =>
     pull(get);
 
-const wrapInEffect = (callback: () => void) => () => {
-  runInScope(createScope(), () => {
-    createEffect(callback);
-  });
+const wrapInBatch = (callback: () => void) => () => {
+  batch(callback);
 };
 
 it("should drop X->B->X updates", () => {
@@ -129,7 +126,7 @@ it("should only update every signal once (diamond graph + tail)", () => {
 
 it(
   "should bail out if result is the same",
-  wrapInEffect(() => {
+  wrapInBatch(() => {
     // Bail out if value of "A" never changes
     // X->A->B
 
@@ -154,7 +151,7 @@ it(
 
 it(
   "should only update every signal once (jagged diamond graph + tails)",
-  wrapInEffect(() => {
+  wrapInBatch(() => {
     // "E" and "F" will be likely updated >3 if our mark+sweep logic is buggy.
     //     X
     //   /   \
@@ -379,7 +376,7 @@ it("only propagates once with exponential convergence", () => {
 
 it(
   "does not trigger downstream computations unless changed",
-  wrapInEffect(() => {
+  wrapInBatch(() => {
     const [s1, set] = createSignal(0);
     let order = "";
     const t1 = createMemo(() => {
@@ -405,7 +402,7 @@ it(
 
 it(
   "applies updates to changed dependees in same order as createMemo",
-  wrapInEffect(() => {
+  wrapInBatch(() => {
     const [s1, set] = createSignal(0);
     let order = "";
     const t1 = createMemo(() => {
@@ -487,7 +484,7 @@ describe("with changing dependencies", () => {
 
   it(
     "does not update on inactive dependencies",
-    wrapInEffect(() => {
+    wrapInBatch(() => {
       init();
       setE(5);
       expect(f()).toBe(1);
@@ -497,7 +494,7 @@ describe("with changing dependencies", () => {
 
   it(
     "deactivates obsolete dependencies",
-    wrapInEffect(() => {
+    wrapInBatch(() => {
       init();
       setI(false);
       f();
@@ -519,7 +516,7 @@ describe("with changing dependencies", () => {
 
   it(
     "ensures that new dependencies are updated before dependee",
-    wrapInEffect(() => {
+    wrapInBatch(() => {
       var order = "",
         [a, setA] = createSignal(0),
         b = createMemo(() => {
@@ -603,7 +600,7 @@ it("does not update subsequent pending computations after stale invocations", ()
 
 it(
   "evaluates stale computations before dependees when trackers stay unchanged",
-  wrapInEffect(() => {
+  wrapInBatch(() => {
     let [s1, set] = createSignal(0);
     let order = "";
     let t1 = createMemo(() => {
@@ -639,7 +636,7 @@ it(
 
 it(
   "correctly marks downstream computations as stale on change",
-  wrapInEffect(() => {
+  wrapInBatch(() => {
     const [s1, set] = createSignal(1);
     let order = "";
     const t1 = createMemo(() => {
