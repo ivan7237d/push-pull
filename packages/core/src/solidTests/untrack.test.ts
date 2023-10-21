@@ -38,6 +38,12 @@ const createMemo =
   () =>
     pull(get);
 
+const wrapInEffect = (callback: () => void) => () => {
+  runInScope(() => {
+    createEffect(callback);
+  }, createScope());
+};
+
 it("should not create dependency", () => {
   const effect = jest.fn();
   const memo = jest.fn();
@@ -67,46 +73,49 @@ it("should not create dependency", () => {
   expect(memo).toHaveBeenCalledTimes(1);
 });
 
-it("should not affect deep dependency being created", () => {
-  const effect = jest.fn();
-  const memo = jest.fn();
+it(
+  "should not affect deep dependency being created",
+  wrapInEffect(() => {
+    const effect = jest.fn();
+    const memo = jest.fn();
 
-  const [$x, setX] = createSignal(10);
-  const [$y, setY] = createSignal(10);
-  const [$z, setZ] = createSignal(10);
+    const [$x, setX] = createSignal(10);
+    const [$y, setY] = createSignal(10);
+    const [$z, setZ] = createSignal(10);
 
-  const $a = createMemo(() => {
-    memo();
-    return $x() + untrack($y) + untrack($z) + 10;
-  });
-
-  runInScope(() => {
-    createEffect(() => {
-      effect();
-      expect(untrack($x)).toBe(10);
-      expect(untrack($a)).toBe(40);
+    const $a = createMemo(() => {
+      memo();
+      return $x() + untrack($y) + untrack($z) + 10;
     });
-  }, createScope());
 
-  expect(effect).toHaveBeenCalledTimes(1);
-  expect($a()).toBe(40);
-  expect(memo).toHaveBeenCalledTimes(1);
+    runInScope(() => {
+      createEffect(() => {
+        effect();
+        expect(untrack($x)).toBe(10);
+        expect(untrack($a)).toBe(40);
+      });
+    }, createScope());
 
-  setX(20);
-  expect(effect).toHaveBeenCalledTimes(1);
-  expect($a()).toBe(50);
-  expect(memo).toHaveBeenCalledTimes(2);
+    expect(effect).toHaveBeenCalledTimes(1);
+    expect($a()).toBe(40);
+    expect(memo).toHaveBeenCalledTimes(1);
 
-  setY(20);
-  expect(effect).toHaveBeenCalledTimes(1);
-  expect($a()).toBe(50);
-  expect(memo).toHaveBeenCalledTimes(2);
+    setX(20);
+    expect(effect).toHaveBeenCalledTimes(1);
+    expect($a()).toBe(50);
+    expect(memo).toHaveBeenCalledTimes(2);
 
-  setZ(20);
-  expect(effect).toHaveBeenCalledTimes(1);
-  expect($a()).toBe(50);
-  expect(memo).toHaveBeenCalledTimes(2);
-});
+    setY(20);
+    expect(effect).toHaveBeenCalledTimes(1);
+    expect($a()).toBe(50);
+    expect(memo).toHaveBeenCalledTimes(2);
+
+    setZ(20);
+    expect(effect).toHaveBeenCalledTimes(1);
+    expect($a()).toBe(50);
+    expect(memo).toHaveBeenCalledTimes(2);
+  })
+);
 
 it("should track owner across peeks", () => {
   const [$x, setX] = createSignal(0);

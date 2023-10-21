@@ -95,9 +95,18 @@ let currentReaction: LazyReaction | Effect | undefined;
  */
 let newChildren: (Subject | LazyReaction)[] | undefined;
 let unchangedChildrenCount = 0;
+
+/**
+ * Effect queue is only flushed when this counter goes down to 0.
+ */
+let effectLock = 0;
 const effectQueue: Effect[] = [];
+
+/**
+ * Disposal queue is only flushed when this counter goes down to 0.
+ */
+let disposalLock = 0;
 const disposalQueue: LazyReaction[] = [];
-let processingQueues = false;
 
 /**
  * Makes sure ancestors are marked as at least "check", and if `dirty` is
@@ -157,23 +166,13 @@ const removeFromChildren = (parent: LazyReaction | Effect, index: number) => {
   }
 };
 
-const maybeProcessQueues = () => {
-  if (!processingQueues) {
-    processingQueues = true;
-    for (let i = 0; i < effectQueue.length; i++) {
-      const effect = effectQueue[i]!;
-      if (!isScopeDisposed(effect)) {
-        // eslint-disable-next-line no-use-before-define
-        sweep(effect);
-      }
-    }
-    effectQueue.length = 0;
+const maybeFlushDisposalQueue = () => {
+  if (!disposalLock) {
     for (let i = 0; i < disposalQueue.length; i++) {
       const lazyReaction = disposalQueue[i]!;
       if (!(parentsSymbol in lazyReaction)) {
         removeFromChildren(lazyReaction, 0);
         delete lazyReaction[childrenSymbol];
-        // TODO: handle re-entry.
         if (scopeSymbol in lazyReaction) {
           disposeScope(lazyReaction[scopeSymbol]);
           delete lazyReaction[scopeSymbol];
@@ -183,7 +182,22 @@ const maybeProcessQueues = () => {
       }
     }
     disposalQueue.length = 0;
-    processingQueues = false;
+  }
+};
+
+const maybeFlushEffectQueue = () => {
+  if (!effectLock) {
+    disposalLock++;
+    for (let i = 0; i < effectQueue.length; i++) {
+      const effect = effectQueue[i]!;
+      if (!isScopeDisposed(effect)) {
+        // eslint-disable-next-line no-use-before-define
+        sweep(effect);
+      }
+    }
+    effectQueue.length = 0;
+    disposalLock--;
+    maybeFlushDisposalQueue();
   }
 };
 
@@ -194,16 +208,17 @@ export const push: {
   // client.
   subject: Subject | LazyReaction
 ) => {
+  effectLock++;
   markAncestors(subject, true);
-  maybeProcessQueues();
+  effectLock--;
+  maybeFlushEffectQueue();
 };
 
 const onLazyReactionError = (error: unknown, scope: Scope) => {
   const reaction = scope[lazyReactionSymbol]!;
   delete reaction[scopeSymbol];
   reaction[errorSymbol] = error;
-  markAncestors(reaction, true);
-  maybeProcessQueues();
+  push(reaction);
 };
 
 const runReaction = (reaction: LazyReaction | Effect) => {
@@ -342,29 +357,37 @@ export const pull: {
   // client.
   subject: Subject | LazyReaction
 ) => {
-  if (runningSymbol in subject) {
-    throw new Error("Cyclical dependency.");
-  }
-  if (typeof subject === "function") {
-    sweep(subject);
-    if (errorSymbol in subject) {
-      throw subject[errorSymbol];
+  disposalLock++;
+  try {
+    if (runningSymbol in subject) {
+      throw new Error("Cyclical dependency.");
     }
-  }
-  if (currentReaction) {
-    if (
-      !newChildren &&
-      currentReaction[childrenSymbol]?.[unchangedChildrenCount] === subject
-    ) {
-      unchangedChildrenCount++;
-    } else if (newChildren) {
-      newChildren.push(subject);
-    } else {
-      newChildren = [subject];
+    if (typeof subject === "function") {
+      sweep(subject);
+      if (errorSymbol in subject) {
+        throw subject[errorSymbol];
+      }
     }
-  }
-  if (typeof subject === "function") {
-    return subject[returnValueSymbol] as any;
+    if (currentReaction) {
+      if (
+        !newChildren &&
+        currentReaction[childrenSymbol]?.[unchangedChildrenCount] === subject
+      ) {
+        unchangedChildrenCount++;
+      } else if (newChildren) {
+        newChildren.push(subject);
+      } else {
+        newChildren = [subject];
+      }
+    } else if (typeof subject === "function" && !(parentsSymbol in subject)) {
+      disposalQueue.push(subject);
+    }
+    if (typeof subject === "function") {
+      return subject[returnValueSymbol] as any;
+    }
+  } finally {
+    disposalLock--;
+    maybeFlushDisposalQueue();
   }
 };
 
@@ -373,10 +396,12 @@ export const createEffect = (callback: () => void): void => {
   effect[callbackSymbol] = callback;
   onDispose(() => {
     removeFromChildren(effect, 0);
-    // TODO: process just the disposal queue.
-    maybeProcessQueues();
+    maybeFlushDisposalQueue();
   });
+  disposalLock++;
   sweep(effect);
+  disposalLock--;
+  maybeFlushDisposalQueue();
 };
 
 export const untrack = <T>(callback: () => T): T => {

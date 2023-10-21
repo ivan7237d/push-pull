@@ -35,13 +35,20 @@
 
 // https://github.com/preactjs/signals/blob/main/packages/core/test/signal.test.tsx#L1249
 
-import { pull } from "../reactivity";
+import { createEffect, pull } from "../reactivity";
+import { createScope, runInScope } from "../scope";
 import { createSignal } from "../signal";
 
 const createMemo =
   <Value>(get: () => Value): (() => Value) =>
   () =>
     pull(get);
+
+const wrapInEffect = (callback: () => void) => () => {
+  runInScope(() => {
+    createEffect(callback);
+  }, createScope());
+};
 
 it("should drop X->B->X updates", () => {
   //     X
@@ -120,82 +127,88 @@ it("should only update every signal once (diamond graph + tail)", () => {
   expect(spy).toHaveBeenCalledTimes(2);
 });
 
-it("should bail out if result is the same", () => {
-  // Bail out if value of "A" never changes
-  // X->A->B
+it(
+  "should bail out if result is the same",
+  wrapInEffect(() => {
+    // Bail out if value of "A" never changes
+    // X->A->B
 
-  const [$x, setX] = createSignal("a");
+    const [$x, setX] = createSignal("a");
 
-  const $a = createMemo(() => {
-    $x();
-    return "foo";
-  });
+    const $a = createMemo(() => {
+      $x();
+      return "foo";
+    });
 
-  const spy = jest.fn(() => $a());
-  const $b = createMemo(spy);
+    const spy = jest.fn(() => $a());
+    const $b = createMemo(spy);
 
-  expect($b()).toBe("foo");
-  expect(spy).toHaveBeenCalledTimes(1);
+    expect($b()).toBe("foo");
+    expect(spy).toHaveBeenCalledTimes(1);
 
-  setX("aa");
-  expect($b()).toBe("foo");
-  expect(spy).toHaveBeenCalledTimes(1);
-});
+    setX("aa");
+    expect($b()).toBe("foo");
+    expect(spy).toHaveBeenCalledTimes(1);
+  })
+);
 
-it("should only update every signal once (jagged diamond graph + tails)", () => {
-  // "E" and "F" will be likely updated >3 if our mark+sweep logic is buggy.
-  //     X
-  //   /   \
-  //  A     B
-  //  |     |
-  //  |     C
-  //   \   /
-  //     D
-  //   /   \
-  //  E     F
+it(
+  "should only update every signal once (jagged diamond graph + tails)",
+  wrapInEffect(() => {
+    // "E" and "F" will be likely updated >3 if our mark+sweep logic is buggy.
+    //     X
+    //   /   \
+    //  A     B
+    //  |     |
+    //  |     C
+    //   \   /
+    //     D
+    //   /   \
+    //  E     F
 
-  const [$x, setX] = createSignal("a");
+    const [$x, setX] = createSignal("a");
 
-  const $a = createMemo(() => $x());
-  const $b = createMemo(() => $x());
-  const $c = createMemo(() => $b());
+    const $a = createMemo(() => $x());
+    const $b = createMemo(() => $x());
+    const $c = createMemo(() => $b());
 
-  const dSpy = jest.fn(() => $a() + " " + $c());
-  const $d = createMemo(dSpy);
+    const dSpy = jest.fn(() => $a() + " " + $c());
+    const $d = createMemo(dSpy);
 
-  const eSpy = jest.fn(() => $d());
-  const $e = createMemo(eSpy);
-  const fSpy = jest.fn(() => $d());
-  const $f = createMemo(fSpy);
+    const eSpy = jest.fn(() => $d());
+    const $e = createMemo(eSpy);
+    const fSpy = jest.fn(() => $d());
+    const $f = createMemo(fSpy);
 
-  expect($e()).toBe("a a");
-  expect(eSpy).toHaveBeenCalledTimes(1);
+    expect($e()).toBe("a a");
+    expect(eSpy).toHaveBeenCalledTimes(1);
 
-  expect($f()).toBe("a a");
-  expect(fSpy).toHaveBeenCalledTimes(1);
+    expect($f()).toBe("a a");
+    expect(fSpy).toHaveBeenCalledTimes(1);
 
-  setX("b");
+    setX("b");
 
-  expect($d()).toBe("b b");
-  expect(dSpy).toHaveBeenCalledTimes(2);
+    expect($d()).toBe("b b");
+    expect(dSpy).toHaveBeenCalledTimes(2);
 
-  expect($e()).toBe("b b");
-  expect(eSpy).toHaveBeenCalledTimes(2);
+    expect($e()).toBe("b b");
+    expect(eSpy).toHaveBeenCalledTimes(2);
 
-  expect($f()).toBe("b b");
-  expect(fSpy).toHaveBeenCalledTimes(2);
+    expect($f()).toBe("b b");
+    expect(fSpy).toHaveBeenCalledTimes(2);
 
-  setX("c");
+    setX("c");
 
-  expect($d()).toBe("c c");
-  expect(dSpy).toHaveBeenCalledTimes(3);
+    expect($d()).toBe("c c");
+    expect(dSpy).toHaveBeenCalledTimes(3);
 
-  expect($e()).toBe("c c");
-  expect(eSpy).toHaveBeenCalledTimes(3);
+    expect($e()).toBe("c c");
+    expect(eSpy).toHaveBeenCalledTimes(3);
 
-  expect($f()).toBe("c c");
-  expect(fSpy).toHaveBeenCalledTimes(3);
-});
+    expect($f()).toBe("c c");
+    expect(fSpy).toHaveBeenCalledTimes(3);
+  })
+);
 
 it("should ensure subs update even if one dep is static", () => {
   //     X
@@ -364,53 +377,59 @@ it("only propagates once with exponential convergence", () => {
   expect(hcount).toBe(1);
 });
 
-it("does not trigger downstream computations unless changed", () => {
-  const [s1, set] = createSignal(0);
-  let order = "";
-  const t1 = createMemo(() => {
-    order += "t1";
-    return Math.max(s1(), 1);
-  });
-  const t2 = createMemo(() => {
-    order += "c1";
-    t1();
-  });
-  t2();
-  expect(order).toBe("c1t1");
-  order = "";
-  set(1);
-  t2();
-  expect(order).toBe("t1");
-  order = "";
-  set(2);
-  t2();
-  expect(order).toBe("t1c1");
-});
+it(
+  "does not trigger downstream computations unless changed",
+  wrapInEffect(() => {
+    const [s1, set] = createSignal(0);
+    let order = "";
+    const t1 = createMemo(() => {
+      order += "t1";
+      return Math.max(s1(), 1);
+    });
+    const t2 = createMemo(() => {
+      order += "c1";
+      t1();
+    });
+    t2();
+    expect(order).toBe("c1t1");
+    order = "";
+    set(1);
+    t2();
+    expect(order).toBe("t1");
+    order = "";
+    set(2);
+    t2();
+    expect(order).toBe("t1c1");
+  })
+);
 
-it("applies updates to changed dependees in same order as createMemo", () => {
-  const [s1, set] = createSignal(0);
-  let order = "";
-  const t1 = createMemo(() => {
-    order += "t1";
-    return s1() === 0;
-  });
-  const t2 = createMemo(() => {
-    order += "c1";
-    return s1();
-  });
-  const t3 = createMemo(() => {
-    order += "c2";
-    return t1();
-  });
-  t2();
-  t3();
-  expect(order).toBe("c1c2t1");
-  order = "";
-  set(1);
-  t2();
-  t3();
-  expect(order).toBe("c1t1c2");
-});
+it(
+  "applies updates to changed dependees in same order as createMemo",
+  wrapInEffect(() => {
+    const [s1, set] = createSignal(0);
+    let order = "";
+    const t1 = createMemo(() => {
+      order += "t1";
+      return s1() === 0;
+    });
+    const t2 = createMemo(() => {
+      order += "c1";
+      return s1();
+    });
+    const t3 = createMemo(() => {
+      order += "c2";
+      return t1();
+    });
+    t2();
+    t3();
+    expect(order).toBe("c1c2t1");
+    order = "";
+    set(1);
+    t2();
+    t3();
+    expect(order).toBe("c1t1c2");
+  })
+);
 
 it("updates downstream pending computations", () => {
   const [s1, set] = createSignal(0);
@@ -466,22 +485,28 @@ describe("with changing dependencies", () => {
     expect(fevals).toBe(1);
   });
 
-  it("does not update on inactive dependencies", () => {
-    init();
-    setE(5);
-    expect(f()).toBe(1);
-    expect(fevals).toBe(0);
-  });
+  it(
+    "does not update on inactive dependencies",
+    wrapInEffect(() => {
+      init();
+      setE(5);
+      expect(f()).toBe(1);
+      expect(fevals).toBe(0);
+    })
+  );
 
-  it("deactivates obsolete dependencies", () => {
-    init();
-    setI(false);
-    f();
-    fevals = 0;
-    setT(5);
-    f();
-    expect(fevals).toBe(0);
-  });
+  it(
+    "deactivates obsolete dependencies",
+    wrapInEffect(() => {
+      init();
+      setI(false);
+      f();
+      fevals = 0;
+      setT(5);
+      f();
+      expect(fevals).toBe(0);
+    })
+  );
 
   it("activates new dependencies", () => {
     init();
@@ -492,48 +517,51 @@ describe("with changing dependencies", () => {
     expect(fevals).toBe(1);
   });
 
-  it("ensures that new dependencies are updated before dependee", () => {
-    var order = "",
-      [a, setA] = createSignal(0),
-      b = createMemo(() => {
-        order += "b";
-        return a() + 1;
-      }),
-      c = createMemo(() => {
-        order += "c";
-        const check = b();
-        if (check) {
-          return check;
-        }
-        return e();
-      }),
-      d = createMemo(() => {
-        return a();
-      }),
-      e = createMemo(() => {
-        order += "d";
-        return d() + 10;
-      });
+  it(
+    "ensures that new dependencies are updated before dependee",
+    wrapInEffect(() => {
+      var order = "",
+        [a, setA] = createSignal(0),
+        b = createMemo(() => {
+          order += "b";
+          return a() + 1;
+        }),
+        c = createMemo(() => {
+          order += "c";
+          const check = b();
+          if (check) {
+            return check;
+          }
+          return e();
+        }),
+        d = createMemo(() => {
+          return a();
+        }),
+        e = createMemo(() => {
+          order += "d";
+          return d() + 10;
+        });
 
-    c();
-    e();
-    expect(order).toBe("cbd");
+      c();
+      e();
+      expect(order).toBe("cbd");
 
-    order = "";
-    setA(-1);
-    c();
-    e();
+      order = "";
+      setA(-1);
+      c();
+      e();
 
-    expect(order).toBe("bcd");
-    expect(c()).toBe(9);
+      expect(order).toBe("bcd");
+      expect(c()).toBe(9);
 
-    order = "";
-    setA(0);
-    c();
-    e();
-    expect(order).toBe("bcd");
-    expect(c()).toBe(1);
-  });
+      order = "";
+      setA(0);
+      c();
+      e();
+      expect(order).toBe("bcd");
+      expect(c()).toBe(1);
+    })
+  );
 });
 
 it("does not update subsequent pending computations after stale invocations", () => {
@@ -573,64 +601,70 @@ it("does not update subsequent pending computations after stale invocations", ()
   expect(count).toBe(3);
 });
 
-it("evaluates stale computations before dependees when trackers stay unchanged", () => {
-  let [s1, set] = createSignal(0);
-  let order = "";
-  let t1 = createMemo(() => {
-    order += "t1";
-    return s1() > 2;
-  });
-  let t2 = createMemo(() => {
-    order += "t2";
-    return s1() > 2;
-  });
-  let c1 = createMemo(() => {
-    order += "c1";
-    Math.max(s1(), 1);
-    return Symbol();
-  });
-  const c2 = createMemo(() => {
-    order += "c2";
-    t1();
-    t2();
-    c1();
-  });
-  c2();
-  order = "";
-  set(1);
-  c2();
-  expect(order).toBe("t1t2c1c2");
-  order = "";
-  set(3);
-  c2();
-  expect(order).toBe("t1c2t2c1");
-});
+it(
+  "evaluates stale computations before dependees when trackers stay unchanged",
+  wrapInEffect(() => {
+    let [s1, set] = createSignal(0);
+    let order = "";
+    let t1 = createMemo(() => {
+      order += "t1";
+      return s1() > 2;
+    });
+    let t2 = createMemo(() => {
+      order += "t2";
+      return s1() > 2;
+    });
+    let c1 = createMemo(() => {
+      order += "c1";
+      Math.max(s1(), 1);
+      return Symbol();
+    });
+    const c2 = createMemo(() => {
+      order += "c2";
+      t1();
+      t2();
+      c1();
+    });
+    c2();
+    order = "";
+    set(1);
+    c2();
+    expect(order).toBe("t1t2c1c2");
+    order = "";
+    set(3);
+    c2();
+    expect(order).toBe("t1c2t2c1");
+  })
+);
 
-it("correctly marks downstream computations as stale on change", () => {
-  const [s1, set] = createSignal(1);
-  let order = "";
-  const t1 = createMemo(() => {
-    order += "t1";
-    return s1();
-  });
-  const c1 = createMemo(() => {
-    order += "c1";
-    return t1();
-  });
-  const c2 = createMemo(() => {
-    order += "c2";
-    return c1();
-  });
-  const c3 = createMemo(() => {
-    order += "c3";
-    return c2();
-  });
-  c3();
-  order = "";
-  set(2);
-  c3();
-  expect(order).toBe("t1c1c2c3");
-});
+it(
+  "correctly marks downstream computations as stale on change",
+  wrapInEffect(() => {
+    const [s1, set] = createSignal(1);
+    let order = "";
+    const t1 = createMemo(() => {
+      order += "t1";
+      return s1();
+    });
+    const c1 = createMemo(() => {
+      order += "c1";
+      return t1();
+    });
+    const c2 = createMemo(() => {
+      order += "c2";
+      return c1();
+    });
+    const c3 = createMemo(() => {
+      order += "c3";
+      return c2();
+    });
+    c3();
+    order = "";
+    set(2);
+    c3();
+    expect(order).toBe("t1c1c2c3");
+  })
+);
 
 /* eslint-enable prefer-const */
 /* eslint-enable no-use-before-define */

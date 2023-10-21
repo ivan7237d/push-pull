@@ -27,13 +27,20 @@
  * https://github.com/solidjs/signals/tree/dcf7521abad59cacce53a881efd5191627cc46c6/tests
  */
 
-import { pull } from "../reactivity";
+import { createEffect, pull } from "../reactivity";
+import { createScope, runInScope } from "../scope";
 import { createSignal } from "../signal";
 
 const createMemo =
   <Value>(get: () => Value): (() => Value) =>
   () =>
     pull(get);
+
+const wrapInEffect = (callback: () => void) => () => {
+  runInScope(() => {
+    createEffect(callback);
+  }, createScope());
+};
 
 it("should store and return value on read", () => {
   const [$x] = createSignal(1);
@@ -80,68 +87,74 @@ it("should update when deep computed dependency is updated", () => {
   expect($c()).toBe(30);
 });
 
-it("should only re-compute when needed", () => {
-  const computed = jest.fn();
+it(
+  "should only re-compute when needed",
+  wrapInEffect(() => {
+    const computed = jest.fn();
 
-  const [$x, setX] = createSignal(10);
-  const [$y, setY] = createSignal(10);
+    const [$x, setX] = createSignal(10);
+    const [$y, setY] = createSignal(10);
 
-  const $a = createMemo(() => computed($x() + $y()));
+    const $a = createMemo(() => computed($x() + $y()));
 
-  expect(computed).not.toHaveBeenCalled();
+    expect(computed).not.toHaveBeenCalled();
 
-  $a();
-  expect(computed).toHaveBeenCalledTimes(1);
-  expect(computed).toHaveBeenCalledWith(20);
+    $a();
+    expect(computed).toHaveBeenCalledTimes(1);
+    expect(computed).toHaveBeenCalledWith(20);
 
-  $a();
-  expect(computed).toHaveBeenCalledTimes(1);
+    $a();
+    expect(computed).toHaveBeenCalledTimes(1);
 
-  setX(20);
-  $a();
-  expect(computed).toHaveBeenCalledTimes(2);
+    setX(20);
+    $a();
+    expect(computed).toHaveBeenCalledTimes(2);
 
-  setY(20);
-  $a();
-  expect(computed).toHaveBeenCalledTimes(3);
+    setY(20);
+    $a();
+    expect(computed).toHaveBeenCalledTimes(3);
 
-  $a();
-  expect(computed).toHaveBeenCalledTimes(3);
-});
+    $a();
+    expect(computed).toHaveBeenCalledTimes(3);
+  })
+);
 
-it("should only re-compute whats needed", () => {
-  const memoA = jest.fn((n) => n);
-  const memoB = jest.fn((n) => n);
+it(
+  "should only re-compute whats needed",
+  wrapInEffect(() => {
+    const memoA = jest.fn((n) => n);
+    const memoB = jest.fn((n) => n);
 
-  const [$x, setX] = createSignal(10);
-  const [$y, setY] = createSignal(10);
+    const [$x, setX] = createSignal(10);
+    const [$y, setY] = createSignal(10);
 
-  const $a = createMemo(() => memoA($x()));
-  const $b = createMemo(() => memoB($y()));
-  const $c = createMemo(() => $a() + $b());
+    const $a = createMemo(() => memoA($x()));
+    const $b = createMemo(() => memoB($y()));
+    const $c = createMemo(() => $a() + $b());
 
-  expect(memoA).not.toHaveBeenCalled();
-  expect(memoB).not.toHaveBeenCalled();
+    expect(memoA).not.toHaveBeenCalled();
+    expect(memoB).not.toHaveBeenCalled();
 
-  $c();
-  expect(memoA).toHaveBeenCalledTimes(1);
-  expect(memoB).toHaveBeenCalledTimes(1);
-  expect($c()).toBe(20);
+    $c();
+    expect(memoA).toHaveBeenCalledTimes(1);
+    expect(memoB).toHaveBeenCalledTimes(1);
+    expect($c()).toBe(20);
 
-  setX(20);
+    setX(20);
 
-  $c();
-  expect(memoA).toHaveBeenCalledTimes(2);
-  expect(memoB).toHaveBeenCalledTimes(1);
-  expect($c()).toBe(30);
+    $c();
+    expect(memoA).toHaveBeenCalledTimes(2);
+    expect(memoB).toHaveBeenCalledTimes(1);
+    expect($c()).toBe(30);
 
-  setY(20);
+    setY(20);
 
-  $c();
-  expect(memoA).toHaveBeenCalledTimes(2);
-  expect(memoB).toHaveBeenCalledTimes(2);
-  expect($c()).toBe(40);
-});
+    $c();
+    expect(memoA).toHaveBeenCalledTimes(2);
+    expect(memoB).toHaveBeenCalledTimes(2);
+    expect($c()).toBe(40);
+  })
+);
 
 it("should discover new dependencies", () => {
   const [$x, setX] = createSignal(1);
