@@ -53,6 +53,11 @@ interface LazyReaction extends Reaction, Subject {
   (): unknown;
   [runningSymbol]?: true;
   [returnValueSymbol]?: unknown;
+  /**
+   * When a lazy reaction throws an error, we store the error here. After that,
+   * as each parent tries to pull the lazy reaction, the edge will be removed,
+   * finally causing the lazy reaction to be removed from the graph.
+   */
   [errorSymbol]?: unknown;
 }
 
