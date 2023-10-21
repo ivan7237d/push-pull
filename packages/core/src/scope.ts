@@ -66,8 +66,8 @@ export const getContext = <Key extends keyof Scope, DefaultValue = undefined>(
 };
 
 export const runInScope: {
-  <T>(callback: () => T, scope: Scope): T | void;
-} = <T>(callback: () => T, scope: Scope | undefined): T | void => {
+  <T>(scope: Scope, callback: () => T): T | void;
+} = <T>(scope: Scope | undefined, callback: () => T): T | void => {
   if (disposedSymbol in scope!) {
     throw new Error("You cannot run a callback in a disposed scope.");
   }

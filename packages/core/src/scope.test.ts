@@ -65,7 +65,7 @@ test("createScope: creating linked list", () => {
 
   const onError = () => {};
   onError[nameSymbol] = "onError";
-  const b = runInScope(() => createScope(onError), a)!;
+  const b = runInScope(a, () => createScope(onError))!;
   (b as any)[nameSymbol] = "b";
   expect(a).toMatchInlineSnapshot(`
     {
@@ -82,7 +82,7 @@ test("createScope: creating linked list", () => {
     }
   `);
 
-  const c = runInScope(createScope, a)!;
+  const c = runInScope(a, createScope)!;
   (c as any)[nameSymbol] = "c";
   expect(a).toMatchInlineSnapshot(`
     {
@@ -110,11 +110,11 @@ test("createScope: creating linked list", () => {
 
 test("createScope: error if scope is disposed", () => {
   const a = createScope();
-  runInScope(() => {
+  runInScope(a, () => {
     onDispose(() => {
       createScope();
     });
-  }, a);
+  });
   processMockMicrotaskQueue();
   disposeScope(a);
   expect(processMockMicrotaskQueue).toThrow(
@@ -124,9 +124,9 @@ test("createScope: error if scope is disposed", () => {
 
 test("getContext", () => {
   const a = createScope();
-  const b = runInScope(createScope, a)!;
-  const c = runInScope(createScope, b)!;
-  const d = runInScope(createScope, c)!;
+  const b = runInScope(a, createScope)!;
+  const c = runInScope(b, createScope)!;
+  const d = runInScope(c, createScope)!;
   b[contextKey1] = 1;
   c[contextKey1] = 2;
 
@@ -157,16 +157,16 @@ test("getContext", () => {
   ).toMatchInlineSnapshot(`"a"`);
 
   // Test picking up the right scope.
-  expect(runInScope(() => getContext(contextKey1), a)).toMatchInlineSnapshot(
+  expect(runInScope(a, () => getContext(contextKey1))).toMatchInlineSnapshot(
     `undefined`
   );
-  expect(runInScope(() => getContext(contextKey1), b)).toMatchInlineSnapshot(
+  expect(runInScope(b, () => getContext(contextKey1))).toMatchInlineSnapshot(
     `1`
   );
-  expect(runInScope(() => getContext(contextKey1), c)).toMatchInlineSnapshot(
+  expect(runInScope(c, () => getContext(contextKey1))).toMatchInlineSnapshot(
     `2`
   );
-  expect(runInScope(() => getContext(contextKey1), d)).toMatchInlineSnapshot(
+  expect(runInScope(d, () => getContext(contextKey1))).toMatchInlineSnapshot(
     `2`
   );
 });
@@ -174,32 +174,32 @@ test("getContext", () => {
 test("runInScope: case of no errors", () => {
   const a = createScope();
   a[contextKey1] = 1;
-  const b = runInScope(createScope, a)!;
+  const b = runInScope(a, createScope)!;
   b[contextKey1] = 2;
 
   // Test returned type.
 
   // $ExpectType number | void
-  runInScope(() => 1, a);
+  runInScope(a, () => 1);
   // $ExpectType void
-  runInScope(() => {}, a);
+  runInScope(a, () => {});
   // $ExpectType void | undefined
-  runInScope(() => undefined, a);
+  runInScope(a, () => undefined);
 
   // Make sure the callback is run in the right context and state is restored
   // afterwards.
-  runInScope(() => {
-    runInScope(() => {
+  runInScope(a, () => {
+    runInScope(b, () => {
       expect(hasSymbol(a, "running")).toMatchInlineSnapshot(`true`);
       expect(hasSymbol(b, "running")).toMatchInlineSnapshot(`true`);
       expect(getContext(contextKey1)).toMatchInlineSnapshot(`2`);
       // Make sure we've actually run the callbacks.
       log("done");
-    }, b);
+    });
     expect(hasSymbol(a, "running")).toMatchInlineSnapshot(`true`);
     expect(hasSymbol(b, "running")).toMatchInlineSnapshot(`false`);
     expect(getContext(contextKey1)).toMatchInlineSnapshot(`1`);
-  }, a);
+  });
   expect(readLog()).toMatchInlineSnapshot(`> "done"`);
   expect(hasSymbol(a, "running")).toMatchInlineSnapshot(`false`);
   expect(hasSymbol(b, "running")).toMatchInlineSnapshot(`false`);
@@ -208,45 +208,41 @@ test("runInScope: case of no errors", () => {
 
 test("runInScope: case of errors", () => {
   const a = createScope();
-  const b = runInScope(
-    () =>
-      createScope((error, scope) => {
-        expect(scope).toBe(b);
-        log.add(label("error handler for scope b"))(error);
-        expect(isScopeDisposed(b)).toMatchInlineSnapshot(`true`);
-        throw "error in error handler for scope b";
-      }),
-    a
+  const b = runInScope(a, () =>
+    createScope((error, scope) => {
+      expect(scope).toBe(b);
+      log.add(label("error handler for scope b"))(error);
+      expect(isScopeDisposed(b)).toMatchInlineSnapshot(`true`);
+      throw "error in error handler for scope b";
+    })
   )!;
-  const c = runInScope(
-    () =>
-      createScope((error, scope) => {
-        expect(scope).toBe(c);
-        log.add(label("error handler for scope c"))(error);
-      }),
-    b
+  const c = runInScope(b, () =>
+    createScope((error, scope) => {
+      expect(scope).toBe(c);
+      log.add(label("error handler for scope c"))(error);
+    })
   )!;
-  const d = runInScope(createScope, c)!;
+  const d = runInScope(c, createScope)!;
 
-  runInScope(() => {
+  runInScope(d, () => {
     throw "error in d";
-  }, d);
+  });
   expect(readLog()).toMatchInlineSnapshot(
     `> [error handler for scope c] "error in d"`
   );
   processMockMicrotaskQueue();
 
-  runInScope(() => {
+  runInScope(c, () => {
     throw "error in c";
-  }, c);
+  });
   expect(readLog()).toMatchInlineSnapshot(
     `> [error handler for scope c] "error in c"`
   );
   processMockMicrotaskQueue();
 
-  runInScope(() => {
+  runInScope(b, () => {
     throw "error in b";
-  }, b);
+  });
   expect(readLog()).toMatchInlineSnapshot(
     `> [error handler for scope b] "error in b"`
   );
@@ -254,9 +250,9 @@ test("runInScope: case of errors", () => {
     "error in error handler for scope b"
   );
 
-  runInScope(() => {
+  runInScope(a, () => {
     throw "error in a";
-  }, a);
+  });
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
   expect(processMockMicrotaskQueue).toThrow("error in a");
 });
@@ -265,7 +261,7 @@ test("runInScope: error if scope is disposed", () => {
   const a = createScope();
   disposeScope(a);
   expect(() =>
-    runInScope(() => undefined, a)
+    runInScope(a, () => undefined)
   ).toThrowErrorMatchingInlineSnapshot(
     `"You cannot run a callback in a disposed scope."`
   );
@@ -273,21 +269,21 @@ test("runInScope: error if scope is disposed", () => {
 
 test("onDispose: updating disposables", () => {
   const a = createScope();
-  runInScope(() => {
+  runInScope(a, () => {
     const disposable = () => {};
     disposable[nameSymbol] = "a";
     onDispose(disposable);
-  }, a);
+  });
   expect(a).toMatchInlineSnapshot(`
     {
       Symbol(disposables): [Function a],
     }
   `);
-  runInScope(() => {
+  runInScope(a, () => {
     const disposable = () => {};
     disposable[nameSymbol] = "b";
     onDispose(disposable);
-  }, a);
+  });
   expect(a).toMatchInlineSnapshot(`
     {
       Symbol(disposables): [
@@ -308,7 +304,7 @@ test("onDispose: error if run outside a scope", () => {
 
 test("onDispose: error if the scope is disposed", () => {
   const scope = createScope();
-  runInScope(() => {
+  runInScope(scope, () => {
     onDispose(() => {
       expect(() => {
         onDispose(() => {});
@@ -317,7 +313,7 @@ test("onDispose: error if the scope is disposed", () => {
       );
       log("done");
     });
-  }, scope);
+  });
   disposeScope(scope);
   expect(readLog()).toMatchInlineSnapshot(`> "done"`);
 });
@@ -328,13 +324,13 @@ test("isScopeDisposed", () => {
   const a = createScope();
   expect(isScopeDisposed(a)).toMatchInlineSnapshot(`false`);
 
-  runInScope(() => {
+  runInScope(a, () => {
     expect(isScopeDisposed()).toMatchInlineSnapshot(`false`);
     onDispose(() => {
       expect(isScopeDisposed()).toMatchInlineSnapshot(`true`);
       log("done");
     });
-  }, a);
+  });
 
   disposeScope(a);
   expect(isScopeDisposed(a)).toMatchInlineSnapshot(`true`);
@@ -343,17 +339,17 @@ test("isScopeDisposed", () => {
 
 test("disposeScope: calling disposables", () => {
   const a = createScope();
-  runInScope(() => {
+  runInScope(a, () => {
     onDispose(log.add(label("disposable in a")));
-  }, a);
+  });
   disposeScope(a);
   expect(readLog()).toMatchInlineSnapshot(`> [disposable in a]`);
 
   const b = createScope();
-  runInScope(() => {
+  runInScope(b, () => {
     onDispose(log.add(label("disposable 1 in b")));
     onDispose(log.add(label("disposable 2 in b")));
-  }, b);
+  });
   disposeScope(b);
   expect(readLog()).toMatchInlineSnapshot(`
     > [disposable 2 in b]
@@ -364,22 +360,22 @@ test("disposeScope: calling disposables", () => {
 test("disposeScope: scope in which disposables are called", () => {
   const a = createScope();
   a[contextKey1] = 1;
-  const b = runInScope(createScope, a)!;
+  const b = runInScope(a, createScope)!;
   b[contextKey1] = 2;
-  runInScope(() => {
+  runInScope(a, () => {
     onDispose(() =>
       log.add(label("context value in disposable in a"))(
         getContext(contextKey1)
       )
     );
-  }, a);
-  runInScope(() => {
+  });
+  runInScope(b, () => {
     onDispose(() =>
       log.add(label("context value in disposable in b"))(
         getContext(contextKey1)
       )
     );
-  }, b);
+  });
   disposeScope(a);
   expect(readLog()).toMatchInlineSnapshot(`
     > [context value in disposable in b] 2
@@ -392,11 +388,11 @@ test("disposeScope: scope in which disposables are called", () => {
 test("disposeScope: handling errors in disposables", () => {
   const a = createScope();
   (a as any)[nameSymbol] = "a";
-  runInScope(() => {
+  runInScope(a, () => {
     onDispose(() => {
       throw "error in disposable in a";
     });
-  }, a);
+  });
   disposeScope(a);
   expect(a).toMatchInlineSnapshot(`
     {
@@ -409,18 +405,18 @@ test("disposeScope: handling errors in disposables", () => {
 
   const b = createScope();
   (b as any)[nameSymbol] = "b";
-  runInScope(() => {
+  runInScope(b, () => {
     onDispose(log.add(label("first disposable in b")));
-  }, b);
-  runInScope(() => {
+  });
+  runInScope(b, () => {
     onDispose(() => {
       log.add(label("second disposable in b"))();
       throw "error in second disposable in b";
     });
-  }, b);
-  runInScope(() => {
+  });
+  runInScope(b, () => {
     onDispose(log.add(label("third disposable in b")));
-  }, b);
+  });
   disposeScope(b);
   expect(readLog()).toMatchInlineSnapshot(`
     > [third disposable in b]
@@ -441,16 +437,16 @@ test("disposeScope: no re-dispose", () => {
 test("disposeScope: no disposing from callback", () => {
   const a = createScope();
   (a as any)[nameSymbol] = "a";
-  const b = runInScope(createScope, a)!;
+  const b = runInScope(a, createScope)!;
   (b as any)[nameSymbol] = "b";
-  runInScope(() => {
+  runInScope(b, () => {
     expect(() => {
       disposeScope(a);
     }).toThrowErrorMatchingInlineSnapshot(
       `"You cannot dispose a scope while a callback is running in that scope."`
     );
     log("done");
-  }, b);
+  });
   expect(readLog()).toMatchInlineSnapshot(`> "done"`);
   expect(isScopeDisposed(a)).toMatchInlineSnapshot(`false`);
   expect(isScopeDisposed(b)).toMatchInlineSnapshot(`false`);
@@ -469,19 +465,19 @@ test("disposeScope: disposing single scope", () => {
 test("disposeScope: disposing last scope", () => {
   const a = createScope();
   (a as any)[nameSymbol] = "a";
-  runInScope(() => {
+  runInScope(a, () => {
     onDispose(log.add(label("disposable in a")));
-  }, a);
-  const b = runInScope(createScope, a)!;
+  });
+  const b = runInScope(a, createScope)!;
   (b as any)[nameSymbol] = "b";
-  runInScope(() => {
+  runInScope(b, () => {
     onDispose(log.add(label("disposable in b")));
-  }, b);
-  const c = runInScope(createScope, a)!;
+  });
+  const c = runInScope(a, createScope)!;
   (c as any)[nameSymbol] = "c";
-  runInScope(() => {
+  runInScope(c, () => {
     onDispose(log.add(label("disposable in c")));
-  }, c);
+  });
 
   disposeScope(c);
   expect(a).toMatchInlineSnapshot(`
@@ -515,19 +511,19 @@ test("disposeScope: disposing last scope", () => {
 test("disposeScope: disposing middle scope", () => {
   const a = createScope();
   (a as any)[nameSymbol] = "a";
-  runInScope(() => {
+  runInScope(a, () => {
     onDispose(log.add(label("disposable in a")));
-  }, a);
-  const b = runInScope(createScope, a)!;
+  });
+  const b = runInScope(a, createScope)!;
   (b as any)[nameSymbol] = "b";
-  runInScope(() => {
+  runInScope(b, () => {
     onDispose(log.add(label("disposable in b")));
-  }, b);
-  const c = runInScope(createScope, a)!;
+  });
+  const c = runInScope(a, createScope)!;
   (c as any)[nameSymbol] = "c";
-  runInScope(() => {
+  runInScope(c, () => {
     onDispose(log.add(label("disposable in c")));
-  }, c);
+  });
 
   disposeScope(b);
   expect(a).toMatchInlineSnapshot(`
@@ -560,19 +556,19 @@ test("disposeScope: disposing middle scope", () => {
 test("disposeScope: disposing first scope", () => {
   const a = createScope();
   (a as any)[nameSymbol] = "a";
-  runInScope(() => {
+  runInScope(a, () => {
     onDispose(log.add(label("disposable in a")));
-  }, a);
-  const b = runInScope(createScope, a)!;
+  });
+  const b = runInScope(a, createScope)!;
   (b as any)[nameSymbol] = "b";
-  runInScope(() => {
+  runInScope(b, () => {
     onDispose(log.add(label("disposable in b")));
-  }, b);
-  const c = runInScope(createScope, a)!;
+  });
+  const c = runInScope(a, createScope)!;
   (c as any)[nameSymbol] = "c";
-  runInScope(() => {
+  runInScope(c, () => {
     onDispose(log.add(label("disposable in c")));
-  }, c);
+  });
 
   disposeScope(a);
   expect(a).toMatchInlineSnapshot(`
@@ -612,24 +608,24 @@ test("disposeScope: disposing first scope", () => {
 test("disposeScope: re-entry", () => {
   const a = createScope();
   (a as any)[nameSymbol] = "a";
-  runInScope(() => {
+  runInScope(a, () => {
     onDispose(log.add(label("disposable in a")));
-  }, a);
-  const b = runInScope(createScope, a)!;
+  });
+  const b = runInScope(a, createScope)!;
   (b as any)[nameSymbol] = "b";
-  runInScope(() => {
+  runInScope(b, () => {
     onDispose(log.add(label("disposable in b")));
-  }, b);
-  const c = runInScope(createScope, a)!;
+  });
+  const c = runInScope(a, createScope)!;
   (c as any)[nameSymbol] = "c";
-  runInScope(() => {
+  runInScope(c, () => {
     onDispose(() => {
       log.add(label("disposable in c"))();
       expect(isScopeDisposed(a)).toMatchInlineSnapshot(`true`);
       expect(isScopeDisposed(b)).toMatchInlineSnapshot(`true`);
       expect(isScopeDisposed(c)).toMatchInlineSnapshot(`true`);
     });
-  }, c);
+  });
 
   disposeScope(a);
   expect(readLog()).toMatchInlineSnapshot(`

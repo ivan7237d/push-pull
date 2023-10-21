@@ -79,13 +79,13 @@ if (global.gc) {
       pointer;
 
     const scope = createScope();
-    runInScope(() => {
+    runInScope(scope, () => {
       ref = new WeakRef(
         (pointer = createMemo(() => {
           $x();
         }))
       );
-    }, scope);
+    });
 
     await gc();
     expect(ref.deref()).toBeDefined();
@@ -104,12 +104,12 @@ if (global.gc) {
       ref!: WeakRef<any>;
 
     let scope: Scope | undefined = createScope();
-    runInScope(() => {
+    runInScope(scope, () => {
       createEffect(() => {
         $x();
         ref = new WeakRef(createScope());
       });
-    }, scope);
+    });
 
     await gc();
     expect(ref.deref()).toBeDefined();

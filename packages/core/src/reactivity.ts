@@ -230,8 +230,8 @@ const runReaction = (reaction: LazyReaction | Effect) => {
   unchangedChildrenCount = 0;
   // If it's an effect.
   if (callbackSymbol in reaction) {
-    const scope = runInScope(createScope, reaction)!;
-    runInScope(reaction[callbackSymbol], scope);
+    const scope = runInScope(reaction, createScope)!;
+    runInScope(scope, reaction[callbackSymbol]);
     if (!isScopeDisposed(scope)) {
       reaction[scopeSymbol] = scope;
     }
@@ -239,7 +239,7 @@ const runReaction = (reaction: LazyReaction | Effect) => {
     const scope = createRootScope(onLazyReactionError);
     scope[lazyReactionSymbol] = reaction;
     reaction[runningSymbol] = true;
-    const returnValue = runInScope(reaction, scope);
+    const returnValue = runInScope(scope, reaction);
     delete reaction[runningSymbol];
     if (!(errorSymbol in reaction)) {
       reaction[scopeSymbol] = scope;
@@ -312,7 +312,7 @@ const sweep = (reaction: LazyReaction | Effect) => {
     // `[scopeSymbol]` this effect was created and that may re-run. If it does
     // get re-run, this effect would be disposed, so we sweep the owner first,
     // and return early if the effect ends up disposed.
-    const ownerToSweep = runInScope(getOwnerToSweep, reaction);
+    const ownerToSweep = runInScope(reaction, getOwnerToSweep);
     if (ownerToSweep) {
       sweep(ownerToSweep);
     }

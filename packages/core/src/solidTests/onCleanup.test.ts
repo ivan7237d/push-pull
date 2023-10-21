@@ -37,13 +37,13 @@ it("should be invoked when computation is disposed", () => {
   const disposeC = jest.fn();
 
   const scope = createScope();
-  runInScope(() => {
+  runInScope(scope, () => {
     createEffect(() => {
       onDispose(disposeA);
       onDispose(disposeB);
       onDispose(disposeC);
     });
-  }, scope);
+  });
 
   disposeScope(scope);
 
@@ -55,21 +55,21 @@ it("should be invoked when computation is disposed", () => {
 it("should not trigger wrong onCleanup", () => {
   const dispose = jest.fn();
 
-  runInScope(() => {
+  runInScope(createScope(), () => {
     createEffect(() => {
       onDispose(dispose);
     });
 
     const scope = createScope();
 
-    runInScope(() => {
+    runInScope(scope, () => {
       createEffect(() => {});
-    }, scope);
+    });
 
     disposeScope(scope);
 
     expect(dispose).toHaveBeenCalledTimes(0);
-  }, createScope());
+  });
 });
 
 it("should clean up in reverse order", () => {
@@ -80,7 +80,7 @@ it("should clean up in reverse order", () => {
   let calls = 0;
 
   const scope = createScope();
-  runInScope(() => {
+  runInScope(scope, () => {
     createEffect(() => {
       onDispose(() => disposeParent(++calls));
 
@@ -92,7 +92,7 @@ it("should clean up in reverse order", () => {
         onDispose(() => disposeB(++calls));
       });
     });
-  }, scope);
+  });
 
   disposeScope(scope);
 
@@ -109,23 +109,23 @@ it("should dispose all roots", () => {
   const disposals: string[] = [];
 
   const scope = createScope();
-  runInScope(() => {
-    runInScope(() => {
+  runInScope(scope, () => {
+    runInScope(createScope(), () => {
       onDispose(() => disposals.push("SUBTREE 1"));
       createEffect(() => onDispose(() => disposals.push("+A1")));
       createEffect(() => onDispose(() => disposals.push("+B1")));
       createEffect(() => onDispose(() => disposals.push("+C1")));
-    }, createScope());
+    });
 
-    runInScope(() => {
+    runInScope(createScope(), () => {
       onDispose(() => disposals.push("SUBTREE 2"));
       createEffect(() => onDispose(() => disposals.push("+A2")));
       createEffect(() => onDispose(() => disposals.push("+B2")));
       createEffect(() => onDispose(() => disposals.push("+C2")));
-    }, createScope());
+    });
 
     onDispose(() => disposals.push("ROOT"));
-  }, scope);
+  });
 
   disposeScope(scope);
 

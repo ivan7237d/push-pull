@@ -45,9 +45,9 @@ const createMemo =
     pull(get);
 
 const wrapInEffect = (callback: () => void) => () => {
-  runInScope(() => {
+  runInScope(createScope(), () => {
     createEffect(callback);
-  }, createScope());
+  });
 };
 
 it("should drop X->B->X updates", () => {

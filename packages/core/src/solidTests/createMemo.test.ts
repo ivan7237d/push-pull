@@ -37,9 +37,9 @@ const createMemo =
     pull(get);
 
 const wrapInEffect = (callback: () => void) => () => {
-  runInScope(() => {
+  runInScope(createScope(), () => {
     createEffect(callback);
-  }, createScope());
+  });
 };
 
 it("should store and return value on read", () => {

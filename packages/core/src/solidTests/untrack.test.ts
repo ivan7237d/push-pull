@@ -39,9 +39,9 @@ const createMemo =
     pull(get);
 
 const wrapInEffect = (callback: () => void) => () => {
-  runInScope(() => {
+  runInScope(createScope(), () => {
     createEffect(callback);
-  }, createScope());
+  });
 };
 
 it("should not create dependency", () => {
@@ -56,14 +56,14 @@ it("should not create dependency", () => {
     return untrack($a) + 10;
   });
 
-  runInScope(() => {
+  runInScope(createScope(), () => {
     createEffect(() => {
       effect();
       expect(untrack($x)).toBe(10);
       expect(untrack($a)).toBe(20);
       expect(untrack($b)).toBe(30);
     });
-  }, createScope());
+  });
 
   expect(effect).toHaveBeenCalledTimes(1);
   expect(memo).toHaveBeenCalledTimes(1);
@@ -88,13 +88,13 @@ it(
       return $x() + untrack($y) + untrack($z) + 10;
     });
 
-    runInScope(() => {
+    runInScope(createScope(), () => {
       createEffect(() => {
         effect();
         expect(untrack($x)).toBe(10);
         expect(untrack($a)).toBe(40);
       });
-    }, createScope());
+    });
 
     expect(effect).toHaveBeenCalledTimes(1);
     expect($a()).toBe(40);
@@ -132,9 +132,9 @@ it("should track owner across peeks", () => {
   }
 
   const scope = createScope();
-  runInScope(() => {
+  runInScope(scope, () => {
     untrack(() => createChild());
-  }, scope);
+  });
 
   setX(1);
   expect(childCompute).toHaveBeenCalledWith(2);

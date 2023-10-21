@@ -42,9 +42,9 @@ it("should run effect", () => {
   const [$x, setX] = createSignal(0),
     effect = jest.fn(() => void $x());
 
-  runInScope(() => {
+  runInScope(createScope(), () => {
     createEffect(effect);
-  }, createScope());
+  });
   expect(effect).toHaveBeenCalledTimes(1);
 
   setX(1);
@@ -60,9 +60,9 @@ it("should run effect on change", () => {
   const $a = createMemo(() => $x() + $y());
   const $b = createMemo(() => $a());
 
-  runInScope(() => {
+  runInScope(createScope(), () => {
     createEffect(() => effect($b()));
-  }, createScope());
+  });
 
   expect(effect).toHaveBeenCalledTimes(1);
 
@@ -86,7 +86,7 @@ it("should handle nested effect", () => {
   const innerDispose = jest.fn();
 
   const scope = createScope();
-  runInScope(() => {
+  runInScope(scope, () => {
     createEffect(() => {
       $x();
       outerEffect();
@@ -96,7 +96,7 @@ it("should handle nested effect", () => {
         onDispose(innerDispose);
       });
     });
-  }, scope);
+  });
 
   expect(outerEffect).toHaveBeenCalledTimes(1);
   expect(innerEffect).toHaveBeenCalledTimes(1);
@@ -139,9 +139,9 @@ it("should stop effect", () => {
   const [$x, setX] = createSignal(10);
 
   const scope = createScope();
-  runInScope(() => {
+  runInScope(scope, () => {
     createEffect(() => effect($x()));
-  }, scope);
+  });
 
   disposeScope(scope);
 
@@ -164,12 +164,12 @@ it("should run all disposals before each new run", () => {
 
   const [$x, setX] = createSignal(0);
 
-  runInScope(() => {
+  runInScope(createScope(), () => {
     createEffect(() => {
       effect();
       fnA(), fnB(), $x();
     });
-  }, createScope());
+  });
 
   expect(effect).toHaveBeenCalledTimes(1);
   expect(disposeA).toHaveBeenCalledTimes(0);
@@ -188,13 +188,13 @@ it("should dispose of nested effect", () => {
   const innerEffect = jest.fn();
 
   const scope = createScope();
-  runInScope(() => {
+  runInScope(scope, () => {
     createEffect(() => {
       createEffect(() => {
         innerEffect($x());
       });
     });
-  }, scope);
+  });
 
   disposeScope(scope);
 
@@ -211,9 +211,9 @@ it("should conditionally observe", () => {
   const $a = createMemo(() => ($condition() ? $x() : $y()));
   const effect = jest.fn();
 
-  runInScope(() => {
+  runInScope(createScope(), () => {
     createEffect(() => effect($a()));
-  }, createScope());
+  });
 
   expect(effect).toHaveBeenCalledTimes(1);
 
@@ -251,9 +251,9 @@ it("should dispose of nested conditional effect", () => {
     });
   }
 
-  runInScope(() => {
+  runInScope(createScope(), () => {
     createEffect(() => ($condition() ? fnA() : fnB()));
-  }, createScope());
+  });
 
   setCondition(false);
   expect(disposeA).toHaveBeenCalledTimes(1);
@@ -266,7 +266,7 @@ it("should handle looped effects", () => {
 
   const [$value, setValue] = createSignal(0);
 
-  runInScope(() => {
+  runInScope(createScope(), () => {
     createEffect(() => {
       values.push($value());
       for (let i = 0; i < loop; i++) {
@@ -275,7 +275,7 @@ it("should handle looped effects", () => {
         });
       }
     });
-  }, createScope());
+  });
 
   expect(values).toHaveLength(3);
   expect(values.join(",")).toBe("0,0,1");
@@ -300,7 +300,7 @@ it("should run parent effect before child effect", () => {
 
   let calls = 0;
 
-  runInScope(() => {
+  runInScope(createScope(), () => {
     createEffect(() => {
       createEffect(() => {
         $x();
@@ -309,7 +309,7 @@ it("should run parent effect before child effect", () => {
 
       $condition();
     });
-  }, createScope());
+  });
 
   setX(1);
   expect(calls).toBe(2);

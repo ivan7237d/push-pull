@@ -13,7 +13,7 @@ test("owner effect is run before child effect", () => {
   const [x, setX] = createSignal(0);
   const f = () => x() * 2;
 
-  runInScope(() => {
+  runInScope(createScope(), () => {
     createEffect(() => {
       log("outer effect");
       createEffect(() => {
@@ -22,7 +22,7 @@ test("owner effect is run before child effect", () => {
       });
       pull(f);
     });
-  }, createScope());
+  });
 
   readLog();
   setX(1);
@@ -40,12 +40,12 @@ test("error handling: error in reaction propagates to effect's containing scope"
     pull(a);
   };
   runInScope(
+    createScope((error) => log.add(label("error handler"))(error)),
     () => {
       createEffect(() => {
         pull(b);
       });
-    },
-    createScope((error) => log.add(label("error handler"))(error))
+    }
   );
   expect(readLog()).toMatchInlineSnapshot(`> [error handler] "oops"`);
 });
@@ -55,13 +55,13 @@ test("error handling: catching error thrown by pull", () => {
     throw "oops";
   };
   const b = {};
-  runInScope(() => {
+  runInScope(createScope(), () => {
     createEffect(() => {
       log("effect");
       expect(() => pull(a)).toThrowErrorMatchingInlineSnapshot(`undefined`);
       pull(b);
     });
-  }, createScope());
+  });
   expect(readLog()).toMatchInlineSnapshot(`> "effect"`);
   push(a);
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
@@ -71,12 +71,12 @@ test("error handling: catching error thrown by pull", () => {
 
 test("batch: effects are deferred, return value", () => {
   const subject = {};
-  runInScope(() => {
+  runInScope(createScope(), () => {
     createEffect(() => {
       pull(subject);
       log("effect");
     });
-  }, createScope());
+  });
   readLog();
   expect(
     batch(() => {
@@ -106,12 +106,12 @@ test.skip("batch: reactions are run as-needed", () => {
   const a = () => log.add(label("reaction a"))((pull(subject), subject.value));
   const b = () => log.add(label("reaction b"))(pull(a) * 10);
   const c = () => log.add(label("reaction c"))(pull(a) * 100);
-  runInScope(() => {
+  runInScope(createScope(), () => {
     createEffect(() => {
       b();
       c();
     });
-  }, createScope());
+  });
   expect(readLog()).toMatchInlineSnapshot(`
     > [reaction a] 1
     > [reaction b] 10

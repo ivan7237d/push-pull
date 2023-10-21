@@ -8,11 +8,11 @@ import { createSignal } from "./signal";
 test("signal", () => {
   const [signal, setSignal] = createSignal(0);
   expect(signal()).toMatchInlineSnapshot(`0`);
-  runInScope(() => {
+  runInScope(createScope(), () => {
     createEffect(() => {
       log.add(label("effect"))(signal());
     });
-  }, createScope());
+  });
   expect(readLog()).toMatchInlineSnapshot(`> [effect] 0`);
   setSignal(1);
   expect(readLog()).toMatchInlineSnapshot(`> [effect] 1`);
