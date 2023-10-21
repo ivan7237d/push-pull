@@ -413,3 +413,15 @@ export const untrack = <T>(callback: () => T): T => {
     currentReaction = outerReaction;
   }
 };
+
+export const batch = <T>(callback: () => T): T => {
+  effectLock++;
+  disposalLock++;
+  try {
+    return callback();
+  } finally {
+    effectLock--;
+    disposalLock--;
+    maybeFlushEffectQueue();
+  }
+};

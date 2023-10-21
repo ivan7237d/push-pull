@@ -4,7 +4,7 @@
 
 import { label } from "@1log/core";
 import { readLog } from "@1log/jest";
-import { createEffect, pull, push } from "./reactivity";
+import { batch, createEffect, pull, push } from "./reactivity";
 import { createScope, runInScope } from "./scope";
 import { log } from "./setupTests";
 import { createSignal } from "./signal";
@@ -67,4 +67,65 @@ test("error handling: catching error thrown by pull", () => {
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
   push(b);
   expect(readLog()).toMatchInlineSnapshot(`> "effect"`);
+});
+
+test("batch: effects are deferred, return value", () => {
+  const subject = {};
+  runInScope(() => {
+    createEffect(() => {
+      pull(subject);
+      log("effect");
+    });
+  }, createScope());
+  readLog();
+  expect(
+    batch(() => {
+      push(subject);
+      expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
+      return 1;
+    })
+  ).toMatchInlineSnapshot(`1`);
+  expect(readLog()).toMatchInlineSnapshot(`> "effect"`);
+});
+
+test("batch: disposals are deferred", () => {
+  const reaction = () => {
+    log("reaction");
+    return 1;
+  };
+  batch(() => {
+    pull(reaction);
+    // Since disposals are deferred, this will not make the reaction re-run.
+    pull(reaction);
+  });
+  expect(readLog()).toMatchInlineSnapshot(`> "reaction"`);
+});
+
+test.skip("batch: reactions are run as-needed", () => {
+  const subject = { value: 1 };
+  const a = () => log.add(label("reaction a"))((pull(subject), subject.value));
+  const b = () => log.add(label("reaction b"))(pull(a) * 10);
+  const c = () => log.add(label("reaction c"))(pull(a) * 100);
+  runInScope(() => {
+    createEffect(() => {
+      b();
+      c();
+    });
+  }, createScope());
+  expect(readLog()).toMatchInlineSnapshot(`
+    > [reaction a] 1
+    > [reaction b] 10
+    > [reaction c] 100
+  `);
+  batch(() => {
+    subject.value = 2;
+    push(subject);
+    expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
+    b();
+    expect(readLog()).toMatchInlineSnapshot(`
+      > [reaction a] 2
+      > [reaction b] 20
+    `);
+  });
+  expect(readLog()).toMatchInlineSnapshot(`> [reaction c] 200`);
 });
