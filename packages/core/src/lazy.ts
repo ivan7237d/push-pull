@@ -1,9 +1,9 @@
 import { LazyPromise, createLazyPromise } from "./lazyPromise";
 import { onDispose } from "./scope";
 
-export const lazy = <T>(
-  callback: (abortSignal: AbortSignal) => PromiseLike<T>
-): LazyPromise<T, unknown> =>
+export const lazy = <Value>(
+  callback: (abortSignal: AbortSignal) => PromiseLike<Value>
+): LazyPromise<Value, unknown> =>
   createLazyPromise((resolve, reject) => {
     const abortController = new AbortController();
     onDispose(() => {
