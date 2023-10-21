@@ -101,15 +101,15 @@ test("batch: disposals are deferred", () => {
   expect(readLog()).toMatchInlineSnapshot(`> "reaction"`);
 });
 
-test.skip("batch: reactions are run as-needed", () => {
+test("batch: reactions are run as-needed", () => {
   const subject = { value: 1 };
   const a = () => log.add(label("reaction a"))((pull(subject), subject.value));
   const b = () => log.add(label("reaction b"))(pull(a) * 10);
   const c = () => log.add(label("reaction c"))(pull(a) * 100);
   runInScope(createScope(), () => {
     createEffect(() => {
-      b();
-      c();
+      pull(b);
+      pull(c);
     });
   });
   expect(readLog()).toMatchInlineSnapshot(`
@@ -121,7 +121,7 @@ test.skip("batch: reactions are run as-needed", () => {
     subject.value = 2;
     push(subject);
     expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
-    b();
+    pull(b);
     expect(readLog()).toMatchInlineSnapshot(`
       > [reaction a] 2
       > [reaction b] 20
