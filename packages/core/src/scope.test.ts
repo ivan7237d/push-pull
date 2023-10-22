@@ -231,14 +231,8 @@ test("runInScope: case of errors", () => {
     `> [error handler for scope c] "error in d"`
   );
   processMockMicrotaskQueue();
-
-  runInScope(c, () => {
-    throw "error in c";
-  });
-  expect(readLog()).toMatchInlineSnapshot(
-    `> [error handler for scope c] "error in c"`
-  );
-  processMockMicrotaskQueue();
+  expect(isScopeDisposed(b)).toMatchInlineSnapshot(`false`);
+  expect(isScopeDisposed(c)).toMatchInlineSnapshot(`true`);
 
   runInScope(b, () => {
     throw "error in b";

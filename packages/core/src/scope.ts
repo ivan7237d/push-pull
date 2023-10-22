@@ -65,45 +65,38 @@ export const getContext = <Key extends keyof Scope, DefaultValue = undefined>(
   return defaultValue as DefaultValue;
 };
 
-export const runInScope: {
-  <T>(scope: Scope, callback: () => T): T | void;
-} = <T>(scope: Scope | undefined, callback: () => T): T | void => {
-  if (disposedSymbol in scope!) {
+export const runInScope = <T>(scope: Scope, callback: () => T): T | void => {
+  if (disposedSymbol in scope) {
     throw new Error("You cannot run a callback in a disposed scope.");
   }
-  const outerRunning = runningSymbol in scope!;
+  const outerRunning = runningSymbol in scope;
   const outerScope = currentScope;
-  scope![runningSymbol] = true;
+  scope[runningSymbol] = true;
   currentScope = scope;
   try {
     try {
       return callback();
     } finally {
       if (!outerRunning) {
-        delete (scope as Scope)[runningSymbol];
+        delete scope[runningSymbol];
       }
       currentScope = outerScope;
     }
   } catch (error) {
+    while (!(onErrorSymbol in scope) && parentSymbol in scope) {
+      scope = scope[parentSymbol];
+    }
+
     // We dispose before calling the error handler (and thus passing control to
     // the client) to make sure that once a scope errors, the clint can't run a
     // callback in it.
 
     // eslint-disable-next-line no-use-before-define
-    disposeScope(scope!);
+    disposeScope(scope);
 
-    // This is much the same as calling `getContext`, but we're doing it this
-    // way as a performance optimization.
-    do {
-      if (onErrorSymbol in scope!) {
-        break;
-      }
-      scope = scope![parentSymbol];
-    } while (scope);
-
-    if (scope) {
+    if (onErrorSymbol in scope) {
       try {
-        scope[onErrorSymbol]!(error, scope);
+        scope[onErrorSymbol](error, scope);
         return;
       } catch (newError) {
         error = newError;
