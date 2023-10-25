@@ -20,6 +20,9 @@ const errorSymbol = Symbol("error");
 const callbackSymbol = Symbol("callback");
 
 interface Subject {
+  /**
+   * Reactions that have pulled this subject.
+   */
   // eslint-disable-next-line no-use-before-define
   [parentsSymbol]?: (LazyReaction | Effect)[];
 }
@@ -40,6 +43,9 @@ interface Subject {
  * disposing the associated scope.
  */
 interface Reaction {
+  /**
+   * Subjects that this reaction has pulled.
+   */
   // eslint-disable-next-line no-use-before-define
   [childrenSymbol]?: (Subject | LazyReaction)[];
   /**
@@ -74,13 +80,13 @@ declare module "./scope" {
   interface Scope {
     /**
      * Used in `[scopeSymbol]` of a `Reaction` and points to that reaction. This
-     * prop is used to indicate that a reaction is in "check" state, and storing
-     * the reaction (rather than say just `true`) as value allows us to retrieve
-     * the owner of an effect and execute it before child.
+     * prop is used to indicate that a reaction is in "check" state. Storing the
+     * reaction (rather than say just `true`) as value allows us to take
+     * advantage of `getContext` to retrieve the owner of an effect.
      */
     [checkSymbol]?: LazyReaction | Effect;
     /**
-     * Present in `[scopeSymbol]` of a `LazyReaction` and points to that
+     * Always present in `[scopeSymbol]` of a `LazyReaction` and points to that
      * reaction. This prop is used for a performance optimization where we use a
      * single global error handler function that handles errors in lazy
      * reactions, instead of creating a function for each lazy reaction
