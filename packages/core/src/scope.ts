@@ -2,8 +2,9 @@ const parentSymbol = Symbol("parent");
 const previousSymbol = Symbol("previous");
 const nextSymbol = Symbol("next");
 const runningSymbol = Symbol("running");
-const disposablesSymbol = Symbol("disposables");
 const disposedSymbol = Symbol("disposed");
+const disposablesSymbol = Symbol("disposables");
+const errorSymbol = Symbol("error");
 const onErrorSymbol = Symbol("onError");
 
 export interface Scope {
@@ -11,8 +12,9 @@ export interface Scope {
   [previousSymbol]?: Scope;
   [nextSymbol]?: Scope;
   [runningSymbol]?: true;
-  [disposablesSymbol]?: (() => void) | (() => void)[];
   [disposedSymbol]?: true;
+  [disposablesSymbol]?: (() => void) | (() => void)[];
+  [errorSymbol]?: unknown;
   [onErrorSymbol]?: (error: unknown, scope: Scope) => void;
 }
 
@@ -69,42 +71,83 @@ export const runInScope = <T>(scope: Scope, callback: () => T): T | void => {
   if (disposedSymbol in scope) {
     throw new Error("You cannot run a callback in a disposed scope.");
   }
-  const outerRunning = runningSymbol in scope;
+  if (runningSymbol in scope) {
+    throw new Error(
+      "In a nested `runInScope` call, you cannot use the same scope or an ancestor scope."
+    );
+  }
+  let nearestRunningAncestor: Scope | undefined = scope;
+  do {
+    nearestRunningAncestor[runningSymbol] = true;
+    nearestRunningAncestor = nearestRunningAncestor[parentSymbol];
+  } while (
+    nearestRunningAncestor &&
+    !(runningSymbol in nearestRunningAncestor)
+  );
   const outerScope = currentScope;
-  scope[runningSymbol] = true;
   currentScope = scope;
   try {
     try {
       return callback();
     } finally {
-      if (!outerRunning) {
-        delete scope[runningSymbol];
-      }
       currentScope = outerScope;
+      let ancestor: Scope | undefined = scope;
+      do {
+        delete ancestor![runningSymbol];
+        ancestor = ancestor![parentSymbol];
+      } while (ancestor !== nearestRunningAncestor);
     }
   } catch (error) {
-    while (!(onErrorSymbol in scope) && parentSymbol in scope) {
-      scope = scope[parentSymbol];
-    }
+    while (true) {
+      // We dispose before calling the error handler (and thus passing control to
+      // the client) to make sure that once a scope errors, the clint can't run a
+      // callback in it.
 
-    // We dispose before calling the error handler (and thus passing control to
-    // the client) to make sure that once a scope errors, the clint can't run a
-    // callback in it.
-
-    // eslint-disable-next-line no-use-before-define
-    disposeScope(scope);
-
-    if (onErrorSymbol in scope) {
-      try {
-        scope[onErrorSymbol](error, scope);
+      // eslint-disable-next-line no-use-before-define
+      disposeScope(scope);
+      if (onErrorSymbol in scope) {
+        currentScope = scope[parentSymbol];
+        try {
+          scope[onErrorSymbol](error, scope);
+          return;
+        } catch (newError) {
+          // We keep going with the new error as if there was no error handler.
+          error = newError;
+        } finally {
+          currentScope = outerScope;
+        }
+      }
+      if (parentSymbol in scope) {
+        scope = scope[parentSymbol];
+        if (scope === nearestRunningAncestor) {
+          scope[errorSymbol] =
+            errorSymbol in scope
+              ? AggregateError([
+                  ...(scope[errorSymbol] instanceof AggregateError
+                    ? scope[errorSymbol].errors
+                    : [scope[errorSymbol]]),
+                  ...(error instanceof AggregateError ? error.errors : [error]),
+                ])
+              : error;
+          return;
+        }
+      } else {
+        queueMicrotask(() => {
+          throw error;
+        });
         return;
-      } catch (newError) {
-        error = newError;
       }
     }
-    queueMicrotask(() => {
+  } finally {
+    if (currentScope && errorSymbol in currentScope) {
+      const error = currentScope[errorSymbol];
+      delete currentScope[errorSymbol];
+
+      // The catch clause doesn't throw, so we're not overwriting an error here.
+
+      // eslint-disable-next-line no-unsafe-finally
       throw error;
-    });
+    }
   }
 };
 
@@ -130,24 +173,20 @@ export const onDispose = (disposable: () => void) => {
   }
 };
 
-export const isScopeDisposed = (
-  scope: Scope | undefined = currentScope
-): boolean => scope !== undefined && disposedSymbol in scope;
+/**
+ * Whether a callback is currently running in the provided scope or one of its
+ * descendants (not counting `onDispose` callbacks).
+ */
+export const isScopeRunning = (scope: Scope): boolean => runningSymbol in scope;
+
+export const isScopeDisposed = (scope: Scope): boolean =>
+  disposedSymbol in scope;
 
 /**
  * Marks `scope` and its descendants as disposed, and returns the "next" scope
  * from the last scope it traverses.
  */
 const markAsDisposed = (scope: Scope): Scope | undefined => {
-  // Since this check is made for the scope and all of its descendants before
-  // actually marking any scope as disposed or in general making any writes, we
-  // will not end up in a half-disposed state.
-  if (runningSymbol in scope) {
-    throw new Error(
-      "You cannot dispose a scope while a callback is running in that scope."
-    );
-  }
-
   let next = scope[nextSymbol];
   while (next && next[parentSymbol] === scope) {
     next = markAsDisposed(next);
@@ -199,6 +238,11 @@ const runDisposables = (scope: Scope): Scope | undefined => {
 export const disposeScope = (scope: Scope): void => {
   if (disposedSymbol in scope) {
     throw new Error("The scope is already disposed.");
+  }
+  if (runningSymbol in scope) {
+    throw new Error(
+      "You cannot dispose a scope while a callback is running in that scope."
+    );
   }
   // Make sure the client will not be able to dispose scopes or create
   // disposables from inside disposables.

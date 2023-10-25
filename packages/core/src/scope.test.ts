@@ -6,10 +6,11 @@ import {
   disposeScope,
   getContext,
   isScopeDisposed,
+  isScopeRunning,
   onDispose,
   runInScope,
 } from "./scope";
-import { hasSymbol, log, nameSymbol } from "./setupTests";
+import { log, nameSymbol } from "./setupTests";
 
 const contextKey1 = Symbol("contextKey1");
 const contextKey2 = Symbol("contextKey2");
@@ -171,11 +172,44 @@ test("getContext", () => {
   );
 });
 
+test("runInScope: error if scope is disposed", () => {
+  const a = createScope();
+  disposeScope(a);
+  expect(() =>
+    runInScope(a, () => undefined)
+  ).toThrowErrorMatchingInlineSnapshot(
+    `"You cannot run a callback in a disposed scope."`
+  );
+});
+
+test("runInScope: error if using the same scope or ancestor in a nested call", () => {
+  const a = createScope();
+  runInScope(a, () => {
+    try {
+      runInScope(a, () => {});
+    } catch (e) {
+      log(e);
+    }
+  });
+  expect(readLog()).toMatchInlineSnapshot(
+    `> [Error: In a nested \`runInScope\` call, you cannot use the same scope or an ancestor scope.]`
+  );
+  const b = runInScope(a, createScope)!;
+  runInScope(b, () => {
+    try {
+      runInScope(a, () => {});
+    } catch (e) {
+      log(e);
+    }
+  });
+  expect(readLog()).toMatchInlineSnapshot(
+    `> [Error: In a nested \`runInScope\` call, you cannot use the same scope or an ancestor scope.]`
+  );
+});
+
 test("runInScope: case of no errors", () => {
   const a = createScope();
   a[contextKey1] = 1;
-  const b = runInScope(a, createScope)!;
-  b[contextKey1] = 2;
 
   // Test returned type.
 
@@ -186,79 +220,201 @@ test("runInScope: case of no errors", () => {
   // $ExpectType void | undefined
   runInScope(a, () => undefined);
 
-  // Make sure the callback is run in the right context and state is restored
-  // afterwards.
+  const b = runInScope(a, createScope)!;
+  b[contextKey1] = 2;
+  const c = runInScope(b, createScope)!;
+
+  // Make sure the callback is run in the right context, scopes are correctly
+  // marked as running, and state is restored afterwards.
   runInScope(a, () => {
-    runInScope(b, () => {
-      expect(hasSymbol(a, "running")).toMatchInlineSnapshot(`true`);
-      expect(hasSymbol(b, "running")).toMatchInlineSnapshot(`true`);
+    runInScope(c, () => {
+      expect(isScopeRunning(a)).toMatchInlineSnapshot(`true`);
+      expect(isScopeRunning(b)).toMatchInlineSnapshot(`true`);
+      expect(isScopeRunning(c)).toMatchInlineSnapshot(`true`);
       expect(getContext(contextKey1)).toMatchInlineSnapshot(`2`);
       // Make sure we've actually run the callbacks.
       log("done");
     });
-    expect(hasSymbol(a, "running")).toMatchInlineSnapshot(`true`);
-    expect(hasSymbol(b, "running")).toMatchInlineSnapshot(`false`);
+    expect(isScopeRunning(a)).toMatchInlineSnapshot(`true`);
+    expect(isScopeRunning(b)).toMatchInlineSnapshot(`false`);
+    expect(isScopeRunning(c)).toMatchInlineSnapshot(`false`);
     expect(getContext(contextKey1)).toMatchInlineSnapshot(`1`);
   });
   expect(readLog()).toMatchInlineSnapshot(`> "done"`);
-  expect(hasSymbol(a, "running")).toMatchInlineSnapshot(`false`);
-  expect(hasSymbol(b, "running")).toMatchInlineSnapshot(`false`);
+  expect(isScopeRunning(a)).toMatchInlineSnapshot(`false`);
+  expect(isScopeRunning(b)).toMatchInlineSnapshot(`false`);
+  expect(isScopeRunning(c)).toMatchInlineSnapshot(`false`);
   expect(getContext(contextKey1)).toMatchInlineSnapshot(`undefined`);
 });
 
-test("runInScope: case of errors", () => {
-  const a = createScope();
-  const b = runInScope(a, () =>
-    createScope((error, scope) => {
-      expect(scope).toBe(b);
-      log.add(label("error handler for scope b"))(error);
-      expect(isScopeDisposed(b)).toMatchInlineSnapshot(`true`);
-      throw "error in error handler for scope b";
-    })
-  )!;
-  const c = runInScope(b, () =>
-    createScope((error, scope) => {
-      expect(scope).toBe(c);
-      log.add(label("error handler for scope c"))(error);
-    })
-  )!;
-  const d = runInScope(c, createScope)!;
-
-  runInScope(d, () => {
-    throw "error in d";
+test("runInScope: error handler caches the error, scope is disposed by then", () => {
+  const a = createScope((error) => {
+    expect(isScopeDisposed(a)).toMatchInlineSnapshot(`true`);
+    log(error);
   });
-  expect(readLog()).toMatchInlineSnapshot(
-    `> [error handler for scope c] "error in d"`
-  );
-  processMockMicrotaskQueue();
-  expect(isScopeDisposed(b)).toMatchInlineSnapshot(`false`);
-  expect(isScopeDisposed(c)).toMatchInlineSnapshot(`true`);
-
-  runInScope(b, () => {
-    throw "error in b";
-  });
-  expect(readLog()).toMatchInlineSnapshot(
-    `> [error handler for scope b] "error in b"`
-  );
-  expect(processMockMicrotaskQueue).toThrow(
-    "error in error handler for scope b"
-  );
-
   runInScope(a, () => {
-    throw "error in a";
+    throw "oops";
   });
-  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
-  expect(processMockMicrotaskQueue).toThrow("error in a");
+  expect(readLog()).toMatchInlineSnapshot(`> "oops"`);
 });
 
-test("runInScope: error if scope is disposed", () => {
+test("runInScope: scope in which an error handler is run", () => {
   const a = createScope();
-  disposeScope(a);
-  expect(() =>
-    runInScope(a, () => undefined)
-  ).toThrowErrorMatchingInlineSnapshot(
-    `"You cannot run a callback in a disposed scope."`
-  );
+  a[contextKey1] = 1;
+  const b = runInScope(a, () =>
+    createScope(() => {
+      log(getContext(contextKey1));
+    })
+  )!;
+  b[contextKey1] = 2;
+  const c = createScope();
+  c[contextKey1] = 3;
+  runInScope(c, () => {
+    runInScope(b, () => {
+      throw "oops";
+    });
+  });
+  // The logged value should be the one coming from scope `a`.
+  expect(readLog()).toMatchInlineSnapshot(`> 1`);
+});
+
+test("runInScope: scope which is passed to an error handler", () => {
+  const a = createScope();
+  const b = runInScope(a, () =>
+    createScope((_, scope) => {
+      log(scope === b);
+    })
+  )!;
+  runInScope(b, () => {
+    throw "oops";
+  });
+  expect(readLog()).toMatchInlineSnapshot(`> true`);
+});
+
+test("runInScope: error handler throws", () => {
+  const a = createScope((error) => {
+    log.add(label("error handled in a"))(error);
+  });
+  const b = runInScope(a, () =>
+    createScope((error) => {
+      log.add(label("error handled in b"))(error);
+      throw "error thrown in error handler";
+    })
+  )!;
+  runInScope(b, () => {
+    throw "error thrown in b";
+  });
+  expect(readLog()).toMatchInlineSnapshot(`
+    > [error handled in b] "error thrown in b"
+    > [error handled in a] "error thrown in error handler"
+  `);
+});
+
+test("runInScope: error re-thrown in running ancestor", () => {
+  const a = createScope();
+  const b = runInScope(a, createScope)!;
+  runInScope(a, () => {
+    try {
+      runInScope(b, () => {
+        throw "oops";
+      });
+    } catch (error) {
+      log.add(label("error caught in a"))(error);
+    }
+  });
+  expect(readLog()).toMatchInlineSnapshot(`> [error caught in a] "oops"`);
+
+  // Make sure that the error is cleaned up after re-throwing.
+  const c = runInScope(a, createScope)!;
+  runInScope(a, () => {
+    runInScope(c, () => {
+      log("done");
+    });
+  });
+  expect(readLog()).toMatchInlineSnapshot(`> "done"`);
+});
+
+test("runInScope: error re-thrown across an intermediate unrelated scope", () => {
+  const a = createScope();
+  const b = runInScope(a, createScope)!;
+  const c = createScope();
+  runInScope(a, () => {
+    try {
+      runInScope(c, () => {
+        runInScope(b, () => {
+          throw "oops";
+        });
+        log("no error in c");
+      });
+    } catch (error) {
+      log.add(label("error caught in a"))(error);
+    }
+  });
+  expect(readLog()).toMatchInlineSnapshot(`
+    > "no error in c"
+    > [error caught in a] "oops"
+  `);
+});
+
+test("runInScope: aggregate error", () => {
+  const a = createScope((error) => {
+    if (error instanceof AggregateError) {
+      log(error.errors);
+    }
+  });
+  const b = runInScope(a, createScope)!;
+  const c = runInScope(a, createScope)!;
+  runInScope(a, () => {
+    runInScope(b, () => {
+      runInScope(c, () => {
+        throw "error in c";
+      });
+      throw "error in b";
+    });
+  });
+  expect(readLog()).toMatchInlineSnapshot(`
+    >
+      [
+        "error in c",
+        "error in b",
+      ]
+  `);
+});
+
+test("runInScope: flattening of aggregate errors", () => {
+  const a = createScope((error) => {
+    if (error instanceof AggregateError) {
+      log(error.errors);
+    }
+  });
+  const b = runInScope(a, createScope)!;
+  const c = runInScope(a, createScope)!;
+  runInScope(a, () => {
+    runInScope(b, () => {
+      runInScope(c, () => {
+        throw new AggregateError([1, 2]);
+      });
+      throw new AggregateError([3, 4]);
+    });
+  });
+  expect(readLog()).toMatchInlineSnapshot(`
+    >
+      [
+        1,
+        2,
+        3,
+        4,
+      ]
+  `);
+});
+
+test("runInScope: throwing in a microtask", () => {
+  const a = createScope();
+  runInScope(a, () => {
+    throw "oops";
+  });
+  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
+  expect(processMockMicrotaskQueue).toThrow("oops");
 });
 
 test("onDispose: updating disposables", () => {
@@ -312,23 +468,20 @@ test("onDispose: error if the scope is disposed", () => {
   expect(readLog()).toMatchInlineSnapshot(`> "done"`);
 });
 
-test("isScopeDisposed", () => {
-  expect(isScopeDisposed()).toMatchInlineSnapshot(`false`);
+test("isScopeRunning", () => {
+  const a = createScope();
+  expect(isScopeRunning(a)).toMatchInlineSnapshot(`false`);
+  runInScope(a, () => {
+    log(isScopeRunning(a));
+  });
+  expect(readLog()).toMatchInlineSnapshot(`> true`);
+});
 
+test("isScopeDisposed", () => {
   const a = createScope();
   expect(isScopeDisposed(a)).toMatchInlineSnapshot(`false`);
-
-  runInScope(a, () => {
-    expect(isScopeDisposed()).toMatchInlineSnapshot(`false`);
-    onDispose(() => {
-      expect(isScopeDisposed()).toMatchInlineSnapshot(`true`);
-      log("done");
-    });
-  });
-
   disposeScope(a);
   expect(isScopeDisposed(a)).toMatchInlineSnapshot(`true`);
-  expect(readLog()).toMatchInlineSnapshot(`> "done"`);
 });
 
 test("disposeScope: calling disposables", () => {
