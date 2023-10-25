@@ -5,7 +5,7 @@
 import { label } from "@1log/core";
 import { readLog } from "@1log/jest";
 import { batch, createEffect, pull, push } from "./reactivity";
-import { createScope, runInScope } from "./scope";
+import { createScope, onDispose, runInScope } from "./scope";
 import { log } from "./setupTests";
 import { createSignal } from "./signal";
 
@@ -67,6 +67,45 @@ test("error handling: catching error thrown by pull", () => {
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
   push(b);
   expect(readLog()).toMatchInlineSnapshot(`> "effect"`);
+});
+
+test("error handling: error in child scope of a lazy reaction", () => {
+  const subject = { value: false };
+  const reaction = () => {
+    log("reaction");
+    onDispose(log.add(label("reaction onDispose")));
+    createEffect(() => {
+      log("inner effect");
+      onDispose(log.add(label("inner effect onDispose")));
+      pull(subject);
+      if (subject.value) {
+        throw "oops";
+      }
+    });
+  };
+  runInScope(
+    createScope((error) => log.add(label("error handler"))(error)),
+    () => {
+      createEffect(() => {
+        log("outer effect");
+        onDispose(log.add(label("outer effect onDispose")));
+        pull(reaction);
+      });
+    }
+  );
+  readLog();
+  subject.value = true;
+  push(subject);
+  expect(readLog()).toMatchInlineSnapshot(`
+    > [inner effect onDispose]
+    > "inner effect"
+    > [inner effect onDispose]
+    > [reaction onDispose]
+    > [outer effect onDispose]
+    > "outer effect"
+    > [outer effect onDispose]
+    > [error handler] "oops"
+  `);
 });
 
 test("batch: effects are deferred, return value", () => {

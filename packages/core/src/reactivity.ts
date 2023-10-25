@@ -192,6 +192,7 @@ const maybeFlushDisposalQueue = () => {
 
 const maybeFlushEffectQueue = () => {
   if (!effectLock) {
+    effectLock++;
     disposalLock++;
     for (let i = 0; i < effectQueue.length; i++) {
       const effect = effectQueue[i]!;
@@ -201,6 +202,7 @@ const maybeFlushEffectQueue = () => {
       }
     }
     effectQueue.length = 0;
+    effectLock--;
     disposalLock--;
     maybeFlushDisposalQueue();
   }
@@ -221,9 +223,45 @@ export const push: {
 
 const onLazyReactionError = (error: unknown, scope: Scope) => {
   const reaction = scope[lazyReactionSymbol]!;
-  delete reaction[scopeSymbol];
   reaction[errorSymbol] = error;
-  push(reaction);
+  if (scopeSymbol in reaction) {
+    delete reaction[scopeSymbol];
+    push(reaction);
+  }
+};
+
+const saveNewChildren = () => {
+  if (newChildren) {
+    removeFromChildren(currentReaction!, unchangedChildrenCount);
+    if (childrenSymbol in currentReaction! && unchangedChildrenCount > 0) {
+      currentReaction[childrenSymbol].length =
+        unchangedChildrenCount + newChildren.length;
+      for (let i = 0; i < newChildren.length; i++) {
+        currentReaction[childrenSymbol][unchangedChildrenCount + i] =
+          newChildren[i]!;
+      }
+    } else {
+      currentReaction![childrenSymbol] = newChildren;
+    }
+    for (
+      let i = unchangedChildrenCount;
+      i < currentReaction![childrenSymbol].length;
+      i++
+    ) {
+      const child = currentReaction![childrenSymbol][i]!;
+      if (parentsSymbol in child) {
+        child[parentsSymbol].push(currentReaction!);
+      } else {
+        child[parentsSymbol] = [currentReaction!];
+      }
+    }
+  } else if (
+    childrenSymbol in currentReaction! &&
+    unchangedChildrenCount < currentReaction[childrenSymbol].length
+  ) {
+    removeFromChildren(currentReaction, unchangedChildrenCount);
+    currentReaction[childrenSymbol].length = unchangedChildrenCount;
+  }
 };
 
 const runReaction = (reaction: LazyReaction | Effect) => {
@@ -231,66 +269,43 @@ const runReaction = (reaction: LazyReaction | Effect) => {
   const outerNewChildren = newChildren;
   const outerUnchangedChildrenCount = unchangedChildrenCount;
   currentReaction = reaction;
-  newChildren = undefined as typeof newChildren;
+  newChildren = undefined;
   unchangedChildrenCount = 0;
-  // If it's an effect.
-  if (callbackSymbol in reaction) {
-    const scope = runInScope(reaction, createScope)!;
-    runInScope(scope, reaction[callbackSymbol]);
-    if (!isScopeDisposed(scope)) {
-      reaction[scopeSymbol] = scope;
-    }
-  } else {
-    const scope = createRootScope(onLazyReactionError);
-    scope[lazyReactionSymbol] = reaction;
-    reaction[runningSymbol] = true;
-    const returnValue = runInScope(scope, reaction);
-    delete reaction[runningSymbol];
-    if (!(errorSymbol in reaction)) {
-      reaction[scopeSymbol] = scope;
-      if (
-        returnValueSymbol in reaction &&
-        reaction[returnValueSymbol] !== returnValue
-      ) {
-        // TODO: what if the client pulls from onDispose
-        markAncestors(reaction, true);
-      }
-      reaction[returnValueSymbol] = returnValue;
-    }
-  }
-  if (newChildren) {
-    removeFromChildren(reaction, unchangedChildrenCount);
-    if (childrenSymbol in reaction && unchangedChildrenCount > 0) {
-      reaction[childrenSymbol].length =
-        unchangedChildrenCount + newChildren.length;
-      for (let i = 0; i < newChildren.length; i++) {
-        reaction[childrenSymbol][unchangedChildrenCount + i] = newChildren[i]!;
+  try {
+    // If it's an effect.
+    if (callbackSymbol in reaction) {
+      const scope = runInScope(reaction, createScope)!;
+      // Can re-throw if we're currently running the reaction that created this
+      // effect.
+      runInScope(scope, reaction[callbackSymbol]);
+      if (!isScopeDisposed(scope)) {
+        reaction[scopeSymbol] = scope;
+        saveNewChildren();
       }
     } else {
-      reaction[childrenSymbol] = newChildren;
-    }
-    for (
-      let i = unchangedChildrenCount;
-      i < reaction[childrenSymbol].length;
-      i++
-    ) {
-      const child = reaction[childrenSymbol][i]!;
-      if (parentsSymbol in child) {
-        child[parentsSymbol].push(reaction);
-      } else {
-        child[parentsSymbol] = [reaction];
+      const scope = createRootScope(onLazyReactionError);
+      scope[lazyReactionSymbol] = reaction;
+      reaction[runningSymbol] = true;
+      const returnValue = runInScope(scope, reaction);
+      delete reaction[runningSymbol];
+      if (!(errorSymbol in reaction)) {
+        reaction[scopeSymbol] = scope;
+        if (
+          returnValueSymbol in reaction &&
+          reaction[returnValueSymbol] !== returnValue
+        ) {
+          // TODO: what if the client pulls from onDispose
+          markAncestors(reaction, true);
+        }
+        reaction[returnValueSymbol] = returnValue;
+        saveNewChildren();
       }
     }
-  } else if (
-    childrenSymbol in reaction &&
-    unchangedChildrenCount < reaction[childrenSymbol].length
-  ) {
-    removeFromChildren(reaction, unchangedChildrenCount);
-    reaction[childrenSymbol].length = unchangedChildrenCount;
+  } finally {
+    currentReaction = outerReaction;
+    newChildren = outerNewChildren;
+    unchangedChildrenCount = outerUnchangedChildrenCount;
   }
-  currentReaction = outerReaction;
-  newChildren = outerNewChildren;
-  unchangedChildrenCount = outerUnchangedChildrenCount;
 };
 
 /**
@@ -404,8 +419,11 @@ export const createEffect = (callback: () => void): void => {
     maybeFlushDisposalQueue();
   });
   disposalLock++;
-  sweep(effect);
-  disposalLock--;
+  try {
+    sweep(effect);
+  } finally {
+    disposalLock--;
+  }
   maybeFlushDisposalQueue();
 };
 
