@@ -247,7 +247,7 @@ const runReaction = (reaction: LazyReaction | Effect) => {
       // effect.
       runInScope(reaction[scopeSymbol], reaction[callbackSymbol]);
       // If the effect has errored.
-      if (isScopeDisposed(reaction[scopeSymbol])) {
+      if (isScopeDisposed(reaction)) {
         // Do not update edges.
         return;
       }
