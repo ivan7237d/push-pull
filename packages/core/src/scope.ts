@@ -53,6 +53,10 @@ export const createScope = (
   return newScope;
 };
 
+/**
+ * Schedules a callback to run after the current scope is disposed. Errors will
+ * be re-thrown in a microtask.
+ */
 export const onDispose = (disposable: () => void) => {
   if (!currentScope) {
     throw new Error("`onDispose` must be called within a `Scope`.");
@@ -154,6 +158,12 @@ export const disposeScope = (scope: Scope): void => {
   }
 };
 
+/**
+ * Unhandled errors from descendants of the current scope will be re-thrown by
+ * this function, unhandled errors from other scopes will be re-thrown in a
+ * microtask. If there are multiple errors, they are combined together into an
+ * AggregateError.
+ */
 export const runInScope = <T>(scope: Scope, callback: () => T): T | void => {
   if (disposedSymbol in scope) {
     throw new Error("You cannot run a callback in a disposed scope.");
