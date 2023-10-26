@@ -1,7 +1,7 @@
 import { label } from "@1log/core";
 import { readLog } from "@1log/jest";
 import { createLazyPromise } from "./lazyPromise";
-import { createScope, runInScope } from "./scope";
+import { createScope, disposeScope, onDispose, runInScope } from "./scope";
 import { log } from "./setupTests";
 
 test("types: erroring promise", () => {
@@ -70,4 +70,22 @@ test("reject", () => {
   });
   reject!("oops");
   expect(readLog()).toMatchInlineSnapshot(`> [reject] "oops"`);
+});
+
+test("cancelation", () => {
+  const promise = createLazyPromise<string>(() => {
+    onDispose(log.add(label("onDispose")));
+  });
+  const a = createScope();
+  runInScope(a, () => {
+    promise();
+  });
+  const b = createScope();
+  runInScope(b, () => {
+    promise();
+  });
+  disposeScope(a);
+  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
+  disposeScope(b);
+  expect(readLog()).toMatchInlineSnapshot(`> [onDispose]`);
 });
