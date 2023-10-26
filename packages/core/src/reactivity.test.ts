@@ -5,9 +5,43 @@
 import { label } from "@1log/core";
 import { readLog } from "@1log/jest";
 import { batch, createEffect, pull, push } from "./reactivity";
-import { createScope, onDispose, runInScope } from "./scope";
-import { log } from "./setupTests";
+import {
+  Scope,
+  createRootScope,
+  createScope,
+  onDispose,
+  runInScope,
+} from "./scope";
+import { log, logFunction } from "./setupTests";
 import { createSignal } from "./signal";
+
+test("running callbacks in reaction scope asynchronously", () => {
+  let childScope: Scope;
+  const subjectA = {};
+  const subjectB = {};
+  const reaction = () => {
+    log("reaction");
+    childScope = createScope();
+  };
+  runInScope(createScope(), () => {
+    createEffect(() => {
+      pull(reaction);
+    });
+  });
+  runInScope(childScope!, () => {
+    pull(subjectA);
+    runInScope(createRootScope(), () => {
+      pull(subjectB);
+    });
+  });
+  readLog();
+  push(subjectA);
+  // Subject A was added as a dependency.
+  expect(readLog()).toMatchInlineSnapshot(`> "reaction"`);
+  push(subjectB);
+  // Subject B was not added as a dependency.
+  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
+});
 
 test("owner effect is run before child effect", () => {
   const [x, setX] = createSignal(0);
@@ -141,6 +175,38 @@ test("cyclical dependencies: pull in an effect", () => {
   expect(readLog()).toMatchInlineSnapshot(
     `> [Error: Cyclical dependency between lazy reactions. A dependency is created when a lazy reaction pulls another, either directly or in a descendant effect.]`
   );
+});
+
+test("pull in a reaction's onDispose", () => {
+  const subjectA = {};
+  const subjectB = {};
+  const reactionA = logFunction("reaction a", () => {
+    pull(subjectA);
+    push(reactionA);
+  });
+  const reactionB = () => {
+    pull(reactionA);
+    onDispose(() => {
+      log("onDispose in b");
+      pull(subjectB);
+    });
+  };
+  runInScope(createScope(), () => {
+    createEffect(() => {
+      pull(reactionB);
+    });
+  });
+  readLog();
+  push(subjectA);
+  // Even though subject b is pulled while reaction a is running...
+  expect(readLog()).toMatchInlineSnapshot(`
+    > [reaction a] [call 2]
+    > "onDispose in b"
+    > [reaction a] [2] [return] undefined
+  `);
+  push(subjectB);
+  // ...subject b is not registered as a dependency of reaction a.
+  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
 });
 
 test("batch: effects are deferred, return value", () => {

@@ -14,7 +14,7 @@ const parentsSymbol = Symbol("parents");
 const childrenSymbol = Symbol("children");
 const scopeSymbol = Symbol("scope");
 const checkSymbol = Symbol("check");
-const lazyReactionSymbol = Symbol("lazyReaction");
+const reactionSymbol = Symbol("reaction");
 const returnValueSymbol = Symbol("value");
 const errorSymbol = Symbol("error");
 const callbackSymbol = Symbol("callback");
@@ -86,23 +86,23 @@ declare module "./scope" {
      */
     [checkSymbol]?: LazyReaction | Effect;
     /**
-     * Always present in `[scopeSymbol]` of a `LazyReaction` and points to that
-     * reaction. This prop is used for a performance optimization where we use a
-     * single global error handler function that handles errors in lazy
-     * reactions, instead of creating a function for each lazy reaction
-     * individually.
+     * Always present in `[scopeSymbol]` of a `Reaction` and lets us get at the
+     * reaction which is currently running.
      */
-    [lazyReactionSymbol]?: LazyReaction;
+    [reactionSymbol]?: LazyReaction | Effect;
   }
 }
 
-let currentReaction: LazyReaction | Effect | undefined;
 /**
- * As part of a perf optimization trick, when running a reaction, we bump
- * `unchangedChildrenCount` until the children array diverges from the old
- * children array, at which point we begin adding children to `newChildren`.
- * This allows to avoid updating children when they stay the same.
+ * The three globals below are used for a perf optimization trick. When running
+ * `LazyReaction` function or `Effect[callbackSymbol]`, we set `currentReaction`
+ * and bump `unchangedChildrenCount` until the children array diverges from the
+ * old children array, at which point we begin adding children to `newChildren`.
+ * This allows to avoid updating children when they stay the same. When a
+ * callback is run in the reaction scope asynchronously, these globals aren't
+ * used.
  */
+let currentReaction: LazyReaction | Effect | undefined;
 let newChildren: (Subject | LazyReaction)[] | undefined;
 let unchangedChildrenCount = 0;
 
@@ -226,7 +226,7 @@ export const push: {
 };
 
 const onLazyReactionError = (error: unknown, scope: Scope) => {
-  const reaction = scope[lazyReactionSymbol]!;
+  const reaction = scope[reactionSymbol] as LazyReaction;
   delete reaction[scopeSymbol];
   reaction[errorSymbol] = error;
   push(reaction);
@@ -243,6 +243,7 @@ const runReaction = (reaction: LazyReaction | Effect) => {
     // If it's an effect.
     if (callbackSymbol in reaction) {
       reaction[scopeSymbol] = runInScope(reaction, createScope)!;
+      reaction[scopeSymbol][reactionSymbol] = reaction;
       // Can throw if we're currently running the reaction that created this
       // effect.
       runInScope(reaction[scopeSymbol], reaction[callbackSymbol]);
@@ -252,7 +253,7 @@ const runReaction = (reaction: LazyReaction | Effect) => {
       }
     } else {
       reaction[scopeSymbol] = createRootScope(onLazyReactionError);
-      reaction[scopeSymbol][lazyReactionSymbol] = reaction;
+      reaction[scopeSymbol][reactionSymbol] = reaction;
       const returnValue = runInScope(reaction[scopeSymbol], reaction);
       if (errorSymbol in reaction) {
         return;
@@ -261,7 +262,6 @@ const runReaction = (reaction: LazyReaction | Effect) => {
         returnValueSymbol in reaction &&
         reaction[returnValueSymbol] !== returnValue
       ) {
-        // TODO: what if the client pulls from onDispose
         markAncestors(reaction, true);
       }
       reaction[returnValueSymbol] = returnValue;
@@ -389,16 +389,30 @@ export const pull: {
         throw subject[errorSymbol];
       }
     }
-    if (currentReaction) {
-      if (
-        !newChildren &&
-        currentReaction[childrenSymbol]?.[unchangedChildrenCount] === subject
-      ) {
-        unchangedChildrenCount++;
-      } else if (newChildren) {
-        newChildren.push(subject);
+    const reaction = getContext(reactionSymbol);
+    if (reaction) {
+      if (currentReaction === reaction) {
+        if (
+          !newChildren &&
+          currentReaction[childrenSymbol]?.[unchangedChildrenCount] === subject
+        ) {
+          unchangedChildrenCount++;
+        } else if (newChildren) {
+          newChildren.push(subject);
+        } else {
+          newChildren = [subject];
+        }
       } else {
-        newChildren = [subject];
+        if (parentsSymbol in subject) {
+          subject[parentsSymbol].push(reaction);
+        } else {
+          subject[parentsSymbol] = [reaction];
+        }
+        if (childrenSymbol in reaction) {
+          reaction[childrenSymbol].push(subject);
+        } else {
+          reaction[childrenSymbol] = [subject];
+        }
       }
     } else if (typeof subject === "function" && !(parentsSymbol in subject)) {
       disposalQueue.push(subject);
@@ -426,16 +440,6 @@ export const createEffect = (callback: () => void): void => {
     disposalLock--;
   }
   maybeFlushDisposalQueue();
-};
-
-export const untrack = <T>(callback: () => T): T => {
-  const outerReaction = currentReaction;
-  currentReaction = undefined;
-  try {
-    return callback();
-  } finally {
-    currentReaction = outerReaction;
-  }
 };
 
 export const batch = <T>(callback: () => T): T => {
