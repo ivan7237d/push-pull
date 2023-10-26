@@ -79,10 +79,10 @@ interface Effect extends Reaction, Scope {
 declare module "./scope" {
   interface Scope {
     /**
-     * Used in `[scopeSymbol]` of a `Reaction` and points to that reaction. This
-     * prop is used to indicate that a reaction is in "check" state. Storing the
-     * reaction (rather than say just `true`) as value allows us to take
-     * advantage of `getContext` to retrieve the owner of an effect.
+     * Used in `[scopeSymbol]` of a `Reaction` and points to that reaction. When
+     * this prop is present, this indicates that the reaction is in "check"
+     * state. Storing the reaction (rather than say just `true`) as value allows
+     * us to take advantage of `getContext` to sweep the owner of an effect.
      */
     [checkSymbol]?: LazyReaction | Effect;
     /**
@@ -243,7 +243,7 @@ const runReaction = (reaction: LazyReaction | Effect) => {
     // If it's an effect.
     if (callbackSymbol in reaction) {
       reaction[scopeSymbol] = runInScope(reaction, createScope)!;
-      // Can re-throw if we're currently running the reaction that created this
+      // Can throw if we're currently running the reaction that created this
       // effect.
       runInScope(reaction[scopeSymbol], reaction[callbackSymbol]);
       if (isScopeDisposed(reaction)) {
@@ -314,7 +314,7 @@ const runReaction = (reaction: LazyReaction | Effect) => {
 const getOwnerToSweep = () => getContext(checkSymbol);
 
 /**
- * Ensures the `reaction` is clean.
+ * Ensures the `reaction` is clean. Throws if a descendant effect errors.
  */
 const sweep = (reaction: LazyReaction | Effect) => {
   // If the reaction is clean or has an error.
