@@ -108,6 +108,41 @@ test("error handling: error in child scope of a lazy reaction", () => {
   `);
 });
 
+test("cyclical dependencies: pull directly", () => {
+  // eslint-disable-next-line no-use-before-define
+  const a: () => unknown = () => pull(b);
+  const b: () => unknown = () => pull(a);
+  expect(() => pull(b)).toThrowErrorMatchingInlineSnapshot(
+    `"Cyclical dependency between lazy reactions. A dependency is created when a lazy reaction pulls another, either directly or in a descendant effect."`
+  );
+});
+
+test("cyclical dependencies: pull in an effect", () => {
+  const subject = { value: false };
+  const a: () => unknown = () => {
+    createEffect(() => {
+      pull(subject);
+      if (subject.value) {
+        pull(a);
+      }
+    });
+  };
+  runInScope(
+    createScope((error) => log(error)),
+    () => {
+      createEffect(() => {
+        pull(a);
+      });
+    }
+  );
+  readLog();
+  subject.value = true;
+  push(subject);
+  expect(readLog()).toMatchInlineSnapshot(
+    `> [Error: Cyclical dependency between lazy reactions. A dependency is created when a lazy reaction pulls another, either directly or in a descendant effect.]`
+  );
+});
+
 test("batch: effects are deferred, return value", () => {
   const subject = {};
   runInScope(createScope(), () => {

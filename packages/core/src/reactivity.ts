@@ -380,7 +380,9 @@ export const pull: {
   disposalLock++;
   try {
     if (scopeSymbol in subject && isScopeRunning(subject[scopeSymbol])) {
-      throw new Error("Cyclical dependency.");
+      throw new Error(
+        "Cyclical dependency between lazy reactions. A dependency is created when a lazy reaction pulls another, either directly or in a descendant effect."
+      );
     }
     if (typeof subject === "function") {
       sweep(subject);
