@@ -8,7 +8,7 @@ export type Publisher<Value, Error = never> = [
 ];
 
 export type Subscriber<Value, Error = never> = [Error] extends [never] // About square brackets: https://www.typescriptlang.org/docs/handbook/2/conditional-types.html#distributive-conditional-types
-  ? [resolve?: (value: Value) => void]
+  ? [resolve?: (value: Value) => void, reject?: undefined]
   : [
       resolve: ((value: Value) => void) | undefined,
       reject: (error: Error) => void

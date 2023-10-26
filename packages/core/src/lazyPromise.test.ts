@@ -42,8 +42,11 @@ test("types: erroring promise", () => {
       }
     );
 
+    // Resolve callback can be omitted.
+    promise(undefined, () => {});
+
     // @ts-expect-error No error handler provided, so we get "Expected 2
-    // arguments, got 1".
+    // arguments, but got 1".
     promise(() => {});
   });
 });
@@ -55,5 +58,16 @@ test("types: non-erroring promise", () => {
   runInScope(createScope(), () => {
     // No error handler required if error type is `never`.
     promise(() => {});
+    promise(() => {}, undefined);
+    promise(undefined);
+    promise();
+
+    promise(
+      () => {},
+      // @ts-expect-error Error handler will never be run, so we get "Argument
+      // of type '() => void' is not assignable to parameter of type
+      // 'undefined'".
+      () => {}
+    );
   });
 });
