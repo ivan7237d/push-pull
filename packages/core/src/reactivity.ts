@@ -246,7 +246,6 @@ const runReaction = (reaction: LazyReaction | Effect) => {
       // Can re-throw if we're currently running the reaction that created this
       // effect.
       runInScope(reaction[scopeSymbol], reaction[callbackSymbol]);
-      // If the effect has errored.
       if (isScopeDisposed(reaction)) {
         // Do not update edges.
         return;
