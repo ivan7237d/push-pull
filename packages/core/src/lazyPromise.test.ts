@@ -27,3 +27,26 @@ test("reject", () => {
   reject!("oops");
   expect(readLog()).toMatchInlineSnapshot(`> [reject] "oops"`);
 });
+
+test("types", () => {
+  const erroringPromise = createLazyPromise<string, number>(() => {});
+  erroringPromise(
+    (value) => {
+      // $ExpectType string
+      value;
+    },
+    (error) => {
+      // $ExpectType number
+      error;
+    }
+  );
+  // @ts-expect-error No error handler provided, so we get "Expected 2
+  // arguments, got 1".
+  erroringPromise(() => {});
+
+  // Error type defaults to `never`.
+  // $ExpectType LazyPromise<string, never>
+  const nonErroringPromise = createLazyPromise<string>(() => {});
+  // No error handler required if error type is `never`.
+  nonErroringPromise(() => {});
+});
