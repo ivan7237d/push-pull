@@ -1,5 +1,5 @@
+import { createRootScope, runInScope } from "../scope";
 import { LazyPromise } from "./lazyPromise";
-import { createRootScope, runInScope } from "./scope";
 
 export const eager = <Value>(
   lazyPromise: LazyPromise<Value, unknown>

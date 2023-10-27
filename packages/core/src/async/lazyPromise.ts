@@ -1,4 +1,4 @@
-import { createEffect, pull, push } from "./reactivity";
+import { createEffect, pull, push } from "../reactivity";
 
 const voidSymbol = Symbol("voidSymbol");
 

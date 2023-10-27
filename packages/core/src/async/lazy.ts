@@ -1,5 +1,5 @@
+import { onDispose } from "../scope";
 import { LazyPromise, createLazyPromise } from "./lazyPromise";
-import { onDispose } from "./scope";
 
 export const lazy = <Value>(
   callback: (abortSignal: AbortSignal) => PromiseLike<Value>
