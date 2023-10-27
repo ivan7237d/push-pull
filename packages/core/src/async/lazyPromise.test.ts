@@ -149,3 +149,19 @@ test("error in a consumer function", () => {
   });
   expect(readLog()).toMatchInlineSnapshot(`> "value"`);
 });
+
+test("unhandled rejection", () => {
+  const promise = createLazyPromise<unknown, string>((_, reject) => {
+    reject("oops");
+  });
+  runInScope(
+    createScope((error) => log.add(label("error handler"))(error)),
+    () => {
+      // @ts-expect-error TS enforces presence of an error handler when the
+      // error type is not `never`, but say the developer wants to temporarily
+      // ignore the red squigglies.
+      promise();
+    }
+  );
+  expect(readLog()).toMatchInlineSnapshot(`> [error handler] "oops"`);
+});
