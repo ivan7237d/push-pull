@@ -1,6 +1,7 @@
 import { createEffect, pull, push } from "../reactivity";
 
-const voidSymbol = Symbol("voidSymbol");
+const resolvedSymbol = Symbol("resolved");
+const rejectedSymbol = Symbol("rejected");
 
 export type Publisher<Value, Error = never> = [
   resolve: (value: Value) => void,
@@ -21,17 +22,19 @@ export interface LazyPromise<Value, Error = never> {
 export const createLazyPromise = <Value, Error = never>(
   produce: (...publisher: Publisher<Value, Error>) => void
 ): LazyPromise<Value, Error> => {
-  let value: Value | typeof voidSymbol = voidSymbol;
-  let error: Error | typeof voidSymbol = voidSymbol;
+  let status: undefined | typeof resolvedSymbol | typeof rejectedSymbol;
+  let result: undefined | Value | Error;
 
   const lazyReaction = () => {
     produce(
-      (newValue) => {
-        value = newValue;
+      (value) => {
+        result = value;
+        status = resolvedSymbol;
         push(lazyReaction);
       },
-      (newError) => {
-        error = newError;
+      (error) => {
+        result = error;
+        status = rejectedSymbol;
         push(lazyReaction);
       }
     );
@@ -39,16 +42,17 @@ export const createLazyPromise = <Value, Error = never>(
 
   return ((resolve, reject) => {
     createEffect(() => {
-      if (value !== voidSymbol) {
-        resolve?.(value);
-      } else if (error !== voidSymbol) {
-        if (reject) {
-          reject(error);
-        } else {
-          throw error;
-        }
-      } else {
+      if (!status) {
         pull(lazyReaction);
+      }
+      if (status === resolvedSymbol) {
+        resolve?.(result as Value);
+      } else if (status === rejectedSymbol) {
+        if (reject) {
+          reject(result as Error);
+        } else {
+          throw result;
+        }
       }
     });
   }) as LazyPromise<Value, Error>;
