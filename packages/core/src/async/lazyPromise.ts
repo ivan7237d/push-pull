@@ -4,25 +4,16 @@ const lazyPromiseSymbol = Symbol("lazyPromise");
 const resolvedSymbol = Symbol("resolved");
 const rejectedSymbol = Symbol("rejected");
 
-export type Publisher<Value, Error = never> = [
-  resolve: (value: Value) => void,
-  reject: (error: Error) => void
-];
-
-export type Subscriber<Value, Error = never> = [Error] extends [never] // About square brackets: https://www.typescriptlang.org/docs/handbook/2/conditional-types.html#distributive-conditional-types
-  ? [resolve?: (value: Value) => void, reject?: undefined]
-  : [
-      resolve: ((value: Value) => void) | undefined,
-      reject: (error: Error) => void
-    ];
-
 export interface LazyPromise<Value, Error = never> {
-  (...subscriber: Subscriber<Value, Error>): void;
+  (resolve?: (value: Value) => void, reject?: (error: Error) => void): void;
   [lazyPromiseSymbol]: true;
 }
 
 export const createLazyPromise = <Value, Error = never>(
-  produce: (...publisher: Publisher<Value, Error>) => void
+  produce: (
+    resolve: (value: Value) => void,
+    reject: (error: Error) => void
+  ) => void
 ): LazyPromise<Value, Error> => {
   let status: undefined | typeof resolvedSymbol | typeof rejectedSymbol;
   let result: undefined | Value | Error;

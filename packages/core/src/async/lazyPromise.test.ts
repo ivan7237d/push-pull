@@ -4,50 +4,6 @@ import { createScope, disposeScope, onDispose, runInScope } from "../scope";
 import { log } from "../setupTests";
 import { createLazyPromise, isLazyPromise } from "./lazyPromise";
 
-test("types: erroring promise", () => {
-  const promise = createLazyPromise<string, number>(() => {});
-  runInScope(createScope(), () => {
-    promise(
-      (value) => {
-        // $ExpectType string
-        value;
-      },
-      (error) => {
-        // $ExpectType number
-        error;
-      }
-    );
-
-    // Resolve callback can be omitted.
-    promise(undefined, () => {});
-
-    // @ts-expect-error No error handler provided, so we get "Expected 2
-    // arguments, but got 1".
-    promise(() => {});
-  });
-});
-
-test("types: non-erroring promise", () => {
-  // Error type defaults to `never`.
-  // $ExpectType LazyPromise<string, never>
-  const promise = createLazyPromise<string>(() => {});
-  runInScope(createScope(), () => {
-    // No error handler required if error type is `never`.
-    promise(() => {});
-    promise(() => {}, undefined);
-    promise(undefined);
-    promise();
-
-    promise(
-      () => {},
-      // @ts-expect-error Error handler will never be run, so we get "Argument
-      // of type '() => void' is not assignable to parameter of type
-      // 'undefined'".
-      () => {}
-    );
-  });
-});
-
 test("async resolve", () => {
   let resolve: (value: string) => void;
   const promise = createLazyPromise<string>((newResolve) => {
@@ -157,9 +113,6 @@ test("unhandled rejection", () => {
   runInScope(
     createScope((error) => log.add(label("error handler"))(error)),
     () => {
-      // @ts-expect-error TS enforces presence of an error handler when the
-      // error type is not `never`, but say the developer wants to temporarily
-      // ignore the red squigglies.
       promise();
     }
   );
