@@ -2,7 +2,7 @@ import { label } from "@1log/core";
 import { readLog } from "@1log/jest";
 import { createScope, disposeScope, onDispose, runInScope } from "../scope";
 import { log } from "../setupTests";
-import { createLazyPromise } from "./lazyPromise";
+import { createLazyPromise, isLazyPromise } from "./lazyPromise";
 
 test("types: erroring promise", () => {
   const promise = createLazyPromise<string, number>(() => {});
@@ -164,4 +164,13 @@ test("unhandled rejection", () => {
     }
   );
   expect(readLog()).toMatchInlineSnapshot(`> [error handler] "oops"`);
+});
+
+test("isLazyPromise", () => {
+  expect(isLazyPromise(undefined)).toMatchInlineSnapshot(`false`);
+  expect(isLazyPromise(null)).toMatchInlineSnapshot(`false`);
+  expect(isLazyPromise(() => {})).toMatchInlineSnapshot(`false`);
+  expect(isLazyPromise(createLazyPromise(() => {}))).toMatchInlineSnapshot(
+    `true`
+  );
 });

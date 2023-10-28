@@ -1,5 +1,6 @@
 import { createEffect, pull, push } from "../reactivity";
 
+const lazyPromiseSymbol = Symbol("lazyPromise");
 const resolvedSymbol = Symbol("resolved");
 const rejectedSymbol = Symbol("rejected");
 
@@ -17,6 +18,7 @@ export type Subscriber<Value, Error = never> = [Error] extends [never] // About 
 
 export interface LazyPromise<Value, Error = never> {
   (...subscriber: Subscriber<Value, Error>): void;
+  [lazyPromiseSymbol]: true;
 }
 
 export const createLazyPromise = <Value, Error = never>(
@@ -40,7 +42,10 @@ export const createLazyPromise = <Value, Error = never>(
     );
   };
 
-  return ((resolve, reject) => {
+  const lazyPromise = (
+    resolve?: (value: Value) => void,
+    reject?: (error: Error) => void
+  ) => {
     createEffect(() => {
       if (!status) {
         pull(lazyReaction);
@@ -55,5 +60,12 @@ export const createLazyPromise = <Value, Error = never>(
         }
       }
     });
-  }) as LazyPromise<Value, Error>;
+  };
+  lazyPromise[lazyPromiseSymbol] = true as const;
+  return lazyPromise;
 };
+
+export const isLazyPromise = (
+  value: unknown
+): value is LazyPromise<unknown, unknown> =>
+  typeof value === "function" && lazyPromiseSymbol in value;
