@@ -1,3 +1,4 @@
+export { catchError } from "./async/catchError";
 export { eager } from "./async/eager";
 export { lazy } from "./async/lazy";
 export { createLazyPromise, isLazyPromise } from "./async/lazyPromise";
