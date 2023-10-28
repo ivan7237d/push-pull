@@ -47,10 +47,12 @@ importers:
       '@1log/core': ^0.0.5
       '@1log/function': ^0.0.10
       '@1log/jest': ^0.0.7
+      pipe-function: ^1.0.0
     devDependencies:
       '@1log/core': 0.0.5
       '@1log/function': 0.0.10_@1log+core@0.0.5
       '@1log/jest': 0.0.7_@1log+core@0.0.5
+      pipe-function: 1.0.0
 
 packages:
 
