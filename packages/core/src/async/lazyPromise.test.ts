@@ -2,7 +2,7 @@ import { label } from "@1log/core";
 import { readLog } from "@1log/jest";
 import { createScope, disposeScope, onDispose, runInScope } from "../scope";
 import { log } from "../setupTests";
-import { createLazyPromise, isLazyPromise } from "./lazyPromise";
+import { createLazyPromise, isLazyPromise, never } from "./lazyPromise";
 
 test("async resolve", () => {
   let resolve: (value: string) => void;
@@ -126,4 +126,12 @@ test("isLazyPromise", () => {
   expect(isLazyPromise(createLazyPromise(() => {}))).toMatchInlineSnapshot(
     `true`
   );
+});
+
+test("never", () => {
+  expect(isLazyPromise(never)).toMatchInlineSnapshot(`true`);
+  runInScope(createScope(), () => {
+    never(log.add(label("resolve")), log.add(label("reject")));
+  });
+  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
 });

@@ -60,3 +60,6 @@ export const isLazyPromise = (
   value: unknown
 ): value is LazyPromise<unknown, unknown> =>
   typeof value === "function" && lazyPromiseSymbol in value;
+
+export const never = (() => {}) as LazyPromise<never, never>;
+never[lazyPromiseSymbol] = true;
