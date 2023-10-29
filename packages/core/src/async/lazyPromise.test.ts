@@ -119,6 +119,36 @@ test("unhandled rejection", () => {
   expect(readLog()).toMatchInlineSnapshot(`> [error handler] "oops"`);
 });
 
+test("already resolved or rejected", () => {
+  const promise1 = createLazyPromise((resolve) => {
+    resolve(1);
+    resolve(2);
+  });
+  runInScope(
+    createScope((error) => log.add(label("error handler"))(error)),
+    () => {
+      promise1();
+    }
+  );
+  expect(readLog()).toMatchInlineSnapshot(
+    `> [error handler] [Error: You cannot resolve a lazy promise that has already resolved or rejected.]`
+  );
+
+  const promise2 = createLazyPromise<unknown, unknown>((_, reject) => {
+    reject(1);
+    reject(2);
+  });
+  runInScope(
+    createScope((error) => log.add(label("error handler"))(error)),
+    () => {
+      promise2();
+    }
+  );
+  expect(readLog()).toMatchInlineSnapshot(
+    `> [error handler] [Error: You cannot reject a lazy promise that has already resolved or rejected.]`
+  );
+});
+
 test("isLazyPromise", () => {
   expect(isLazyPromise(undefined)).toMatchInlineSnapshot(`false`);
   expect(isLazyPromise(null)).toMatchInlineSnapshot(`false`);

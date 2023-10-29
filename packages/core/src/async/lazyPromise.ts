@@ -9,6 +9,9 @@ export interface LazyPromise<Value, Error = never> {
   [lazyPromiseSymbol]: true;
 }
 
+const getErrorMessage = (resolveOrReject: string) =>
+  `You cannot ${resolveOrReject} a lazy promise that has already resolved or rejected.`;
+
 export const createLazyPromise = <Value, Error = never>(
   produce: (
     resolve: (value: Value) => void,
@@ -21,11 +24,17 @@ export const createLazyPromise = <Value, Error = never>(
   const lazyReaction = () => {
     produce(
       (value) => {
+        if (status) {
+          throw new Error(getErrorMessage("resolve"));
+        }
         result = value;
         status = resolvedSymbol;
         push(lazyReaction);
       },
       (error) => {
+        if (status) {
+          throw new Error(getErrorMessage("reject"));
+        }
         result = error;
         status = rejectedSymbol;
         push(lazyReaction);
