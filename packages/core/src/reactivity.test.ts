@@ -92,15 +92,27 @@ test("error handling: catching error thrown by pull", () => {
   runInScope(createScope(), () => {
     createEffect(() => {
       log("effect");
-      expect(() => pull(a)).toThrowErrorMatchingInlineSnapshot(`undefined`);
+      try {
+        pull(a);
+      } catch (error) {
+        log.add(label("caught error"))(error);
+      }
       pull(b);
     });
   });
-  expect(readLog()).toMatchInlineSnapshot(`> "effect"`);
+  expect(readLog()).toMatchInlineSnapshot(`
+    > "effect"
+    > [caught error] "oops"
+  `);
   push(a);
+  // Effect was not run because we did not end up creating a dependency on `a`.
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
   push(b);
-  expect(readLog()).toMatchInlineSnapshot(`> "effect"`);
+  // Dependency on `b` did get created.
+  expect(readLog()).toMatchInlineSnapshot(`
+    > "effect"
+    > [caught error] "oops"
+  `);
 });
 
 test("error handling: error in child scope of a lazy reaction", () => {
