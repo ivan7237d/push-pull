@@ -4,16 +4,29 @@ import { createScope, disposeScope, onDispose, runInScope } from "../scope";
 import { log } from "../setupTests";
 import { createLazyPromise, isLazyPromise, never } from "./lazyPromise";
 
+beforeAll(() => {
+  jest.useFakeTimers();
+});
+
+afterAll(() => {
+  jest.useRealTimers();
+});
+
 test("async resolve", () => {
-  let resolve: (value: string) => void;
-  const promise = createLazyPromise<string>((newResolve) => {
-    resolve = newResolve;
+  const promise = createLazyPromise<string>((resolve) => {
+    setTimeout(() => {
+      resolve("value");
+    }, 1000);
   });
   runInScope(createScope(), () => {
     promise(log.add(label("resolve")));
   });
-  resolve!("value");
-  expect(readLog()).toMatchInlineSnapshot(`> [resolve] "value"`);
+  log("start");
+  jest.runAllTimers();
+  expect(readLog()).toMatchInlineSnapshot(`
+    > "start"
+    > [resolve] +1s "value"
+  `);
 });
 
 test("sync resolve", () => {
@@ -27,15 +40,20 @@ test("sync resolve", () => {
 });
 
 test("async reject", () => {
-  let reject: (value: string) => void;
-  const promise = createLazyPromise<unknown, string>((_, newReject) => {
-    reject = newReject;
+  const promise = createLazyPromise<unknown, string>((_, reject) => {
+    setTimeout(() => {
+      reject("oops");
+    }, 1000);
   });
   runInScope(createScope(), () => {
     promise(undefined, log.add(label("reject")));
   });
-  reject!("oops");
-  expect(readLog()).toMatchInlineSnapshot(`> [reject] "oops"`);
+  log("start");
+  jest.runAllTimers();
+  expect(readLog()).toMatchInlineSnapshot(`
+    > "start"
+    > [reject] +1s "oops"
+  `);
 });
 
 test("sync reject", () => {
