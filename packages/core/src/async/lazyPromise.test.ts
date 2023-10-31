@@ -167,6 +167,14 @@ test("already resolved or rejected", () => {
   );
 });
 
+test("never", () => {
+  expect(isLazyPromise(never)).toMatchInlineSnapshot(`true`);
+  runInScope(createScope(), () => {
+    never(log.add(label("resolve")), log.add(label("reject")));
+  });
+  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
+});
+
 test("isLazyPromise", () => {
   expect(isLazyPromise(undefined)).toMatchInlineSnapshot(`false`);
   expect(isLazyPromise(null)).toMatchInlineSnapshot(`false`);
@@ -174,12 +182,4 @@ test("isLazyPromise", () => {
   expect(isLazyPromise(createLazyPromise(() => {}))).toMatchInlineSnapshot(
     `true`
   );
-});
-
-test("never", () => {
-  expect(isLazyPromise(never)).toMatchInlineSnapshot(`true`);
-  runInScope(createScope(), () => {
-    never(log.add(label("resolve")), log.add(label("reject")));
-  });
-  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
 });
