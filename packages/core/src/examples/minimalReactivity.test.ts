@@ -32,6 +32,13 @@ const pull = (subject: Subject) => {
   }
 };
 
+const createReaction = (reaction: Reaction) => {
+  const outerReaction = currentReaction;
+  currentReaction = reaction;
+  reaction();
+  currentReaction = outerReaction;
+};
+
 const disposeReaction = (reaction: Reaction) => {
   if (childrenSymbol in reaction) {
     for (let i = 0; i < reaction[childrenSymbol].length; i++) {
@@ -49,25 +56,15 @@ const disposeReaction = (reaction: Reaction) => {
   }
 };
 
-const runReaction = (reaction: Reaction) => {
-  disposeReaction(reaction);
-  const outerReaction = currentReaction;
-  currentReaction = reaction;
-  reaction();
-  currentReaction = outerReaction;
-};
-
 const push = (subject: Subject) => {
   if (parentsSymbol in subject) {
     const parentsCopy = [...subject[parentsSymbol]];
     for (let i = 0; i < parentsCopy.length; i++) {
-      runReaction(parentsCopy[i]!);
+      const parent = parentsCopy[i]!;
+      disposeReaction(parent);
+      createReaction(parent);
     }
   }
-};
-
-const createEffect = (callback: () => void): void => {
-  runReaction(callback);
 };
 
 const createSignal = <Value>(
@@ -93,7 +90,7 @@ const createMemo = <Value>(
   initialValue?: Value
 ): (() => Value) => {
   const subject = {};
-  createEffect(() => {
+  createReaction(() => {
     const newValue = get();
     if (newValue !== initialValue) {
       initialValue = newValue;
@@ -108,19 +105,23 @@ const createMemo = <Value>(
 
 test("reaction", () => {
   const subject = {};
-  createEffect(() => {
+  const callback = () => {
     pull(subject);
     log("reaction");
-  });
+  };
+  createReaction(callback);
   expect(readLog()).toMatchInlineSnapshot(`> "reaction"`);
   push(subject);
   expect(readLog()).toMatchInlineSnapshot(`> "reaction"`);
+  disposeReaction(callback);
+  push(subject);
+  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
 });
 
 test("signal", () => {
   const [x, setX] = createSignal(0);
   expect(x()).toMatchInlineSnapshot(`0`);
-  createEffect(() => {
+  createReaction(() => {
     log.add(label("reaction"))(x());
   });
   expect(readLog()).toMatchInlineSnapshot(`> [reaction] 0`);
@@ -133,7 +134,7 @@ test("signal", () => {
 test("memo", () => {
   const [x, setX] = createSignal(0);
   const memo = createMemo(() => Math.min(x() * 2, 10));
-  createEffect(() => {
+  createReaction(() => {
     log.add(label("reaction"))(memo());
   });
   expect(readLog()).toMatchInlineSnapshot(`> [reaction] 0`);
@@ -147,7 +148,7 @@ test("diamond problem is not solved", () => {
   const [a, setA] = createSignal(0);
   const b = createMemo(() => a());
   const c = createMemo(() => a());
-  createEffect(() => {
+  createReaction(() => {
     log(b() + c());
   });
   expect(readLog()).toMatchInlineSnapshot(`> 0`);
@@ -162,17 +163,17 @@ test("diamond problem on reaction level", () => {
   const a = {};
   const b = {};
   const c = {};
-  createEffect(() => {
+  createReaction(() => {
     log("reaction b");
     pull(a);
     push(b);
   });
-  createEffect(() => {
+  createReaction(() => {
     log("reaction c");
     pull(a);
     push(c);
   });
-  createEffect(() => {
+  createReaction(() => {
     log("reaction d");
     pull(b);
     pull(c);
