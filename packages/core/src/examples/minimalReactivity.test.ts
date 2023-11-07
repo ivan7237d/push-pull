@@ -3,6 +3,7 @@ import { readLog } from "@1log/jest";
 import { log } from "../setupTests";
 
 const parentsSymbol = Symbol("parents");
+const childrenSymbol = Symbol("children");
 
 interface Subject {
   // eslint-disable-next-line no-use-before-define
@@ -11,6 +12,7 @@ interface Subject {
 
 interface Reaction {
   (): void;
+  [childrenSymbol]?: Subject[];
 }
 
 let currentReaction: Reaction | undefined;
@@ -22,22 +24,47 @@ const pull = (subject: Subject) => {
     } else {
       subject[parentsSymbol] = [currentReaction];
     }
+    if (childrenSymbol in currentReaction) {
+      currentReaction[childrenSymbol].push(subject);
+    } else {
+      currentReaction[childrenSymbol] = [subject];
+    }
   }
+};
+
+const runReaction = (reaction: Reaction) => {
+  if (childrenSymbol in reaction) {
+    for (let i = 0; i < reaction[childrenSymbol].length; i++) {
+      const child = reaction[childrenSymbol][i]!;
+      const parents: Reaction[] = child[parentsSymbol]!;
+      if (parents.length === 1) {
+        delete child[parentsSymbol];
+      } else {
+        const swap = parents.indexOf(reaction);
+        parents[swap] = parents[parents.length - 1]!;
+        parents.pop();
+      }
+    }
+    delete reaction[childrenSymbol];
+  }
+
+  const outerReaction = currentReaction;
+  currentReaction = reaction;
+  reaction();
+  currentReaction = outerReaction;
 };
 
 const push = (subject: Subject) => {
   if (parentsSymbol in subject) {
-    for (let i = 0; i < subject[parentsSymbol].length; i++) {
-      subject[parentsSymbol][i]!();
+    const parentsCopy = [...subject[parentsSymbol]];
+    for (let i = 0; i < parentsCopy.length; i++) {
+      runReaction(parentsCopy[i]!);
     }
   }
 };
 
 const createEffect = (callback: () => void): void => {
-  const outerReaction = currentReaction;
-  currentReaction = callback;
-  callback();
-  currentReaction = outerReaction;
+  runReaction(callback);
 };
 
 const createSignal = <Value>(
@@ -125,5 +152,38 @@ test("diamond problem is not solved", () => {
   expect(readLog()).toMatchInlineSnapshot(`
     > 1
     > 2
+  `);
+});
+
+test("diamond problem on reaction level", () => {
+  const a = {};
+  const b = {};
+  const c = {};
+  createEffect(() => {
+    log("reaction b");
+    pull(a);
+    push(b);
+  });
+  createEffect(() => {
+    log("reaction c");
+    pull(a);
+    push(c);
+  });
+  createEffect(() => {
+    log("reaction d");
+    pull(b);
+    pull(c);
+  });
+  expect(readLog()).toMatchInlineSnapshot(`
+    > "reaction b"
+    > "reaction c"
+    > "reaction d"
+  `);
+  push(a);
+  expect(readLog()).toMatchInlineSnapshot(`
+    > "reaction b"
+    > "reaction d"
+    > "reaction c"
+    > "reaction d"
   `);
 });
