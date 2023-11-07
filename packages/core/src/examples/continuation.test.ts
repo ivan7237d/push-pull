@@ -4,6 +4,7 @@ import { log } from "../setupTests";
 
 const parentsSymbol = Symbol("parents");
 const childrenSymbol = Symbol("children");
+const continuationSymbol = Symbol("continuation");
 
 interface Subject {
   // eslint-disable-next-line no-use-before-define
@@ -11,8 +12,9 @@ interface Subject {
 }
 
 interface Reaction {
-  (): void;
+  (): Reaction | void;
   [childrenSymbol]?: Subject[];
+  [continuationSymbol]?: Reaction;
 }
 
 let currentReaction: Reaction | undefined;
@@ -47,14 +49,22 @@ const disposeReaction = (reaction: Reaction) => {
     }
     delete reaction[childrenSymbol];
   }
+  if (continuationSymbol in reaction) {
+    disposeReaction(reaction[continuationSymbol]);
+  }
 };
 
 const runReaction = (reaction: Reaction) => {
   disposeReaction(reaction);
+
   const outerReaction = currentReaction;
   currentReaction = reaction;
-  reaction();
+  const continuation = reaction();
   currentReaction = outerReaction;
+  if (continuation) {
+    reaction[continuationSymbol] = continuation;
+    runReaction(continuation);
+  }
 };
 
 const push = (subject: Subject) => {
@@ -189,4 +199,28 @@ test("diamond problem on reaction level", () => {
     > "reaction c"
     > "reaction d"
   `);
+});
+
+test("continuation", () => {
+  const a = {};
+  const b = {};
+  createEffect(() => {
+    log("reaction");
+    pull(a);
+    return () => {
+      log("continuation");
+      pull(b);
+    };
+  });
+  expect(readLog()).toMatchInlineSnapshot(`
+    > "reaction"
+    > "continuation"
+  `);
+  push(a);
+  expect(readLog()).toMatchInlineSnapshot(`
+    > "reaction"
+    > "continuation"
+  `);
+  push(b);
+  expect(readLog()).toMatchInlineSnapshot(`> "continuation"`);
 });
