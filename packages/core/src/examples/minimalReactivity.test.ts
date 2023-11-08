@@ -85,22 +85,29 @@ const createSignal = <Value>(
   ];
 };
 
+// We have to return dispose handle in addition to accessor.
 const createMemo = <Value>(
   get: () => Value,
   initialValue?: Value
-): (() => Value) => {
+): [() => Value, () => void] => {
   const subject = {};
-  createReaction(() => {
+  const reaction = () => {
     const newValue = get();
     if (newValue !== initialValue) {
       initialValue = newValue;
       push(subject);
     }
-  });
-  return () => {
-    pull(subject);
-    return initialValue as Value;
   };
+  createReaction(reaction);
+  return [
+    () => {
+      pull(subject);
+      return initialValue as Value;
+    },
+    () => {
+      disposeReaction(reaction);
+    },
+  ];
 };
 
 test("reaction", () => {
@@ -133,7 +140,7 @@ test("signal", () => {
 
 test("memo", () => {
   const [x, setX] = createSignal(0);
-  const memo = createMemo(() => Math.min(x() * 2, 10));
+  const [memo, dispose] = createMemo(() => Math.min(x() * 2, 10));
   createReaction(() => {
     log.add(label("reaction"))(memo());
   });
@@ -142,12 +149,15 @@ test("memo", () => {
   expect(readLog()).toMatchInlineSnapshot(`> [reaction] 10`);
   setX(6);
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
+  dispose();
+  setX(0);
+  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
 });
 
 test("diamond problem is not solved", () => {
   const [a, setA] = createSignal(0);
-  const b = createMemo(() => a());
-  const c = createMemo(() => a());
+  const [b] = createMemo(() => a());
+  const [c] = createMemo(() => a());
   createReaction(() => {
     log(b() + c());
   });
