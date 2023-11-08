@@ -5,6 +5,7 @@ import { log } from "../setupTests";
 const parentsSymbol = Symbol("parents");
 const childrenSymbol = Symbol("children");
 const continuationSymbol = Symbol("continuation");
+const disposablesSymbol = Symbol("disposables");
 
 interface Subject {
   // eslint-disable-next-line no-use-before-define
@@ -15,6 +16,7 @@ interface Reaction {
   (): Reaction | void;
   [childrenSymbol]?: Subject[];
   [continuationSymbol]?: Reaction;
+  [disposablesSymbol]?: (() => void) | (() => void)[];
 }
 
 let currentReaction: Reaction | undefined;
@@ -34,11 +36,32 @@ const pull = (subject: Subject) => {
   }
 };
 
+export const onDispose = (disposable: () => void) => {
+  if (currentReaction) {
+    if (disposablesSymbol in currentReaction) {
+      if (Array.isArray(currentReaction[disposablesSymbol])) {
+        currentReaction[disposablesSymbol].push(disposable);
+      } else {
+        currentReaction[disposablesSymbol] = [
+          currentReaction[disposablesSymbol],
+          disposable,
+        ];
+      }
+    } else {
+      currentReaction[disposablesSymbol] = disposable;
+    }
+  }
+};
+
 const createReaction = (reaction: Reaction) => {
   const outerReaction = currentReaction;
   currentReaction = reaction;
   const continuation = reaction();
   currentReaction = outerReaction;
+  onDispose(() => {
+    // eslint-disable-next-line no-use-before-define
+    disposeReaction(reaction);
+  });
   if (continuation) {
     reaction[continuationSymbol] = continuation;
     createReaction(continuation);
@@ -62,6 +85,16 @@ const disposeReaction = (reaction: Reaction) => {
       }
     }
     delete reaction[childrenSymbol];
+  }
+  if (disposablesSymbol in reaction) {
+    if (Array.isArray(reaction[disposablesSymbol])) {
+      for (let i = 0; i < reaction[disposablesSymbol].length; i++) {
+        reaction[disposablesSymbol][i]!();
+      }
+    } else {
+      reaction[disposablesSymbol]();
+    }
+    delete reaction[disposablesSymbol];
   }
 };
 
