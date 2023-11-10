@@ -26,6 +26,6 @@ A _reaction_ is defined as a function that would not produce side effects if all
 
 - The function has been run previously
 
-- The subjects pulled in that last run have not been pushed since
+- The subjects pulled in the last run have not been pushed since
 
-- The reactions swept during that last run would not currently produce side effects
+- The reactions swept during the last run would not currently produce side effects
