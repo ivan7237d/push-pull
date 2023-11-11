@@ -4,18 +4,26 @@ import { log } from "../setupTests";
 
 const pullersSymbol = Symbol("pullers");
 const puleesSymbol = Symbol("pulees");
+const swipersSymbol = Symbol("swipers");
+const swipeesSymbol = Symbol("swipees");
 
 interface Subject {
   // eslint-disable-next-line no-use-before-define
-  [pullersSymbol]?: Reaction[];
+  [pullersSymbol]?: (Reaction | LazyReaction)[];
 }
 
 interface Reaction {
   (): void;
   [puleesSymbol]?: Subject[];
+  // eslint-disable-next-line no-use-before-define
+  [swipeesSymbol]?: LazyReaction[];
 }
 
-let currentReaction: Reaction | undefined;
+interface LazyReaction extends Reaction {
+  [swipersSymbol]?: (Reaction | LazyReaction)[];
+}
+
+let currentReaction: Reaction | LazyReaction | undefined;
 
 const pull: { (subject: object): void } = (subject: Subject) => {
   if (currentReaction) {
@@ -32,14 +40,30 @@ const pull: { (subject: object): void } = (subject: Subject) => {
   }
 };
 
-const startReaction = (reaction: Reaction) => {
+const startReaction = (reaction: Reaction | LazyReaction) => {
   const outerReaction = currentReaction;
   currentReaction = reaction;
   reaction();
   currentReaction = outerReaction;
 };
 
-const stopReaction = (reaction: Reaction) => {
+const swipe = (lazyReaction: LazyReaction) => {
+  if (currentReaction) {
+    if (swipersSymbol in lazyReaction) {
+      lazyReaction[swipersSymbol].push(currentReaction);
+    } else {
+      lazyReaction[swipersSymbol] = [currentReaction];
+    }
+    if (swipeesSymbol in currentReaction) {
+      currentReaction[swipeesSymbol].push(lazyReaction);
+    } else {
+      currentReaction[swipeesSymbol] = [lazyReaction];
+    }
+    startReaction(lazyReaction);
+  }
+};
+
+const stopReaction = (reaction: Reaction | LazyReaction) => {
   if (puleesSymbol in reaction) {
     for (let i = 0; i < reaction[puleesSymbol].length; i++) {
       const pulee = reaction[puleesSymbol][i]!;
@@ -53,6 +77,21 @@ const stopReaction = (reaction: Reaction) => {
       }
     }
     delete reaction[puleesSymbol];
+  }
+  if (swipeesSymbol in reaction) {
+    for (let i = 0; i < reaction[swipeesSymbol].length; i++) {
+      const swipee = reaction[swipeesSymbol][i]!;
+      const swipers: (Reaction | LazyReaction)[] = swipee[swipersSymbol]!;
+      if (swipers.length === 1) {
+        delete swipee[swipersSymbol];
+        stopReaction(swipee);
+      } else {
+        const swap = swipers.indexOf(reaction);
+        swipers[swap] = swipers[swipers.length - 1]!;
+        swipers.pop();
+      }
+    }
+    delete reaction[swipeesSymbol];
   }
 };
 
@@ -85,29 +124,22 @@ const createSignal = <Value>(
   ];
 };
 
-// We have to return dispose handle in addition to accessor.
 const createMemo = <Value>(
   get: () => Value,
   initialValue?: Value
-): [() => Value, () => void] => {
-  const subject = {};
+): (() => Value) => {
   const reaction = () => {
     const newValue = get();
     if (newValue !== initialValue) {
       initialValue = newValue;
-      push(subject);
+      push(reaction);
     }
   };
-  startReaction(reaction);
-  return [
-    () => {
-      pull(subject);
-      return initialValue as Value;
-    },
-    () => {
-      stopReaction(reaction);
-    },
-  ];
+  return () => {
+    swipe(reaction);
+    pull(reaction);
+    return initialValue as Value;
+  };
 };
 
 test("reaction", () => {
@@ -140,12 +172,11 @@ test("signal", () => {
 
 test("memo", () => {
   const [x, setX] = createSignal(0);
-  const [memo, dispose] = createMemo(() =>
-    log.add(label("memo"))(Math.min(x() * 2, 10))
-  );
-  startReaction(() => {
+  const memo = createMemo(() => log.add(label("memo"))(Math.min(x() * 2, 10)));
+  const reaction = () => {
     log.add(label("reaction"))(memo());
-  });
+  };
+  startReaction(reaction);
   expect(readLog()).toMatchInlineSnapshot(`
     > [memo] 0
     > [reaction] 0
@@ -157,15 +188,15 @@ test("memo", () => {
   `);
   setX(6);
   expect(readLog()).toMatchInlineSnapshot(`> [memo] 10`);
-  dispose();
+  stopReaction(reaction);
   setX(0);
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
 });
 
 test("diamond problem is not solved", () => {
   const [a, setA] = createSignal(0);
-  const [b] = createMemo(() => a());
-  const [c] = createMemo(() => a());
+  const b = createMemo(() => a());
+  const c = createMemo(() => a());
   startReaction(() => {
     log(b() + c());
   });
