@@ -22,7 +22,7 @@ npm install @push-pull/core
 
 ## Usage
 
-A _reaction_ is defined as a function that would not produce side effects if all of the following holds:
+A _reaction_ is defined as a `() => void` function that would not produce side effects if all of the following holds:
 
 - The function has been run previously
 
