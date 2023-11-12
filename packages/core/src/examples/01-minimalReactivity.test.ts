@@ -2,6 +2,10 @@ import { label } from "@1log/core";
 import { readLog } from "@1log/jest";
 import { log } from "../setupTests";
 
+//
+// Reactivity
+//
+
 const pullersSymbol = Symbol("pullers");
 const puleesSymbol = Symbol("pulees");
 
@@ -67,6 +71,10 @@ const push: { (subject: object): void } = (subject: Subject) => {
   }
 };
 
+//
+// Abstractions on top of reactivity
+//
+
 const createSignal = <Value>(
   value: Value
 ): readonly [get: () => Value, set: (newValue: Value) => void] => {
@@ -109,6 +117,10 @@ const createMemo = <Value>(
     },
   ];
 };
+
+//
+// Tests
+//
 
 test("reaction", () => {
   const subject = {};
@@ -163,6 +175,11 @@ test("memo", () => {
 });
 
 test("for a diamond graph there are glitches and redundant reaction calls", () => {
+  //     a
+  //   /   \
+  //  b     c
+  //   \   /
+  //     d
   const [a, setA] = createSignal(0);
   const [b] = createMemo(() => a());
   const [c] = createMemo(() => a());
@@ -178,6 +195,13 @@ test("for a diamond graph there are glitches and redundant reaction calls", () =
 });
 
 test("for an asymmetrical diamond graph there are glitches and redundant reaction calls", () => {
+  //     a
+  //   /   \
+  //  b     c
+  //  |     |
+  //  |     d
+  //   \   /
+  //     e
   const [a, setA] = createSignal(0);
   const [b] = createMemo(() => a());
   const [c] = createMemo(() => a());
