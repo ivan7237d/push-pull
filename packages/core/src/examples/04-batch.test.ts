@@ -122,6 +122,19 @@ const push: { (subject: object): void } = (subject: Subject) => {
   }
 };
 
+export const batch = <T>(callback: () => T): T => {
+  if (holdReactions) {
+    return callback();
+  }
+  holdReactions = true;
+  try {
+    return callback();
+  } finally {
+    holdReactions = false;
+    maybeFlushEffectQueue();
+  }
+};
+
 const createSignal = <Value>(
   value: Value
 ): readonly [get: () => Value, set: (newValue: Value) => void] => {
@@ -244,4 +257,20 @@ test("for an asymmetrical diamond graph there are glitches and redundant reactio
     > 1
     > 2
   `);
+});
+
+test("batch", () => {
+  const a = {};
+  const b = {};
+  createEffect(() => {
+    log("effect");
+    pull(a);
+    pull(b);
+  });
+  readLog();
+  batch(() => {
+    push(a);
+    push(b);
+  });
+  expect(readLog()).toMatchInlineSnapshot(`> "effect"`);
 });
