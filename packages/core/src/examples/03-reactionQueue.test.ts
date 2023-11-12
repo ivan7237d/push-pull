@@ -92,6 +92,22 @@ const createEffect = (reaction: Reaction) => {
   };
 };
 
+/**
+ * Internal.
+ */
+const maybeFlushEffectQueue = () => {
+  if (!holdReactions) {
+    holdReactions = true;
+    for (let i = 0; i < reactionQueue.length; i++) {
+      const reaction = reactionQueue[i]!;
+      stopReaction(reaction);
+      startReaction(reaction);
+    }
+    reactionQueue.length = 0;
+    holdReactions = false;
+  }
+};
+
 const push: { (subject: object): void } = (subject: Subject) => {
   if (pullersSymbol in subject) {
     const pullersCopy = [...subject[pullersSymbol]];
@@ -102,16 +118,7 @@ const push: { (subject: object): void } = (subject: Subject) => {
         reactionQueue.push(puller);
       }
     }
-    if (!holdReactions) {
-      holdReactions = true;
-      for (let i = 0; i < reactionQueue.length; i++) {
-        const reaction = reactionQueue[i]!;
-        stopReaction(reaction);
-        startReaction(reaction);
-      }
-      reactionQueue.length = 0;
-      holdReactions = false;
-    }
+    maybeFlushEffectQueue();
   }
 };
 
