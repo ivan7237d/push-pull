@@ -5,6 +5,7 @@ import { log } from "../setupTests";
 const pullersSymbol = Symbol("pullers");
 const puleesSymbol = Symbol("pulees");
 const effectCountSymbol = Symbol("effectCount");
+const cleanSymbol = Symbol("clean");
 
 interface Subject {
   // eslint-disable-next-line no-use-before-define
@@ -15,9 +16,13 @@ interface Reaction {
   (): void;
   [puleesSymbol]?: Subject[];
   [effectCountSymbol]?: number;
+  [cleanSymbol]?: true;
 }
 
 let currentReaction: Reaction | undefined;
+
+const reactionQueue: Reaction[] = [];
+let holdReactions = false;
 
 const pull: { (subject: object): void } = (subject: Subject) => {
   if (currentReaction) {
@@ -41,6 +46,7 @@ const startReaction = (reaction: Reaction) => {
   const outerReaction = currentReaction;
   currentReaction = reaction;
   reaction();
+  reaction[cleanSymbol] = true;
   currentReaction = outerReaction;
 };
 
@@ -91,8 +97,20 @@ const push: { (subject: object): void } = (subject: Subject) => {
     const pullersCopy = [...subject[pullersSymbol]];
     for (let i = 0; i < pullersCopy.length; i++) {
       const puller = pullersCopy[i]!;
-      stopReaction(puller);
-      startReaction(puller);
+      if (cleanSymbol in puller) {
+        delete puller[cleanSymbol];
+        reactionQueue.push(puller);
+      }
+    }
+    if (!holdReactions) {
+      holdReactions = true;
+      for (let i = 0; i < reactionQueue.length; i++) {
+        const reaction = reactionQueue[i]!;
+        stopReaction(reaction);
+        startReaction(reaction);
+      }
+      reactionQueue.length = 0;
+      holdReactions = false;
     }
   }
 };
@@ -193,7 +211,7 @@ test("memo", () => {
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
 });
 
-test("diamond problem is not solved", () => {
+test("no more glitches for a diamond graph just because we now do breadth-first", () => {
   const [a, setA] = createSignal(0);
   const [b] = createMemo(() => a());
   const [c] = createMemo(() => a());
@@ -202,41 +220,21 @@ test("diamond problem is not solved", () => {
   });
   expect(readLog()).toMatchInlineSnapshot(`> 0`);
   setA(1);
+  expect(readLog()).toMatchInlineSnapshot(`> 2`);
+});
+
+test("for an asymmetrical diamond graph there are glitches and redundant reaction calls", () => {
+  const [a, setA] = createSignal(0);
+  const [b] = createMemo(() => a());
+  const [c] = createMemo(() => a());
+  const [d] = createMemo(() => c());
+  createEffect(() => {
+    log(b() + d());
+  });
+  expect(readLog()).toMatchInlineSnapshot(`> 0`);
+  setA(1);
   expect(readLog()).toMatchInlineSnapshot(`
     > 1
     > 2
-  `);
-});
-
-test("diamond problem on reaction level", () => {
-  const a = {};
-  const b = {};
-  const c = {};
-  createEffect(() => {
-    log("reaction b");
-    pull(a);
-    push(b);
-  });
-  createEffect(() => {
-    log("reaction c");
-    pull(a);
-    push(c);
-  });
-  createEffect(() => {
-    log("reaction d");
-    pull(b);
-    pull(c);
-  });
-  expect(readLog()).toMatchInlineSnapshot(`
-    > "reaction b"
-    > "reaction c"
-    > "reaction d"
-  `);
-  push(a);
-  expect(readLog()).toMatchInlineSnapshot(`
-    > "reaction b"
-    > "reaction d"
-    > "reaction c"
-    > "reaction d"
   `);
 });

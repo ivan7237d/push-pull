@@ -162,7 +162,7 @@ test("memo", () => {
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
 });
 
-test("diamond problem is not solved", () => {
+test("for a diamond graph there are glitches and redundant reaction calls", () => {
   const [a, setA] = createSignal(0);
   const [b] = createMemo(() => a());
   const [c] = createMemo(() => a());
@@ -177,35 +177,18 @@ test("diamond problem is not solved", () => {
   `);
 });
 
-test("diamond problem on reaction level", () => {
-  const a = {};
-  const b = {};
-  const c = {};
+test("for an asymmetrical diamond graph there are glitches and redundant reaction calls", () => {
+  const [a, setA] = createSignal(0);
+  const [b] = createMemo(() => a());
+  const [c] = createMemo(() => a());
+  const [d] = createMemo(() => c());
   startReaction(() => {
-    log("reaction b");
-    pull(a);
-    push(b);
+    log(b() + d());
   });
-  startReaction(() => {
-    log("reaction c");
-    pull(a);
-    push(c);
-  });
-  startReaction(() => {
-    log("reaction d");
-    pull(b);
-    pull(c);
-  });
+  expect(readLog()).toMatchInlineSnapshot(`> 0`);
+  setA(1);
   expect(readLog()).toMatchInlineSnapshot(`
-    > "reaction b"
-    > "reaction c"
-    > "reaction d"
-  `);
-  push(a);
-  expect(readLog()).toMatchInlineSnapshot(`
-    > "reaction b"
-    > "reaction d"
-    > "reaction c"
-    > "reaction d"
+    > 1
+    > 2
   `);
 });
