@@ -247,3 +247,25 @@ test("for an asymmetrical diamond graph there are glitches and redundant reactio
     > 2
   `);
 });
+
+test("cyclical graph", () => {
+  const [a, setA] = createSignal(2);
+  startReaction(() => {
+    const aValue = a();
+    log.add(label("reaction"))(aValue);
+    if (aValue > 0) {
+      setA(aValue - 1);
+    }
+  });
+  expect(readLog()).toMatchInlineSnapshot(`
+    > [reaction] 2
+    > [reaction] 1
+    > [reaction] 0
+  `);
+  setA(2);
+  expect(readLog()).toMatchInlineSnapshot(`
+    > [reaction] 2
+    > [reaction] 1
+    > [reaction] 0
+  `);
+});

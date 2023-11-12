@@ -50,8 +50,8 @@ const pull: { (subject: object): void } = (subject: Subject) => {
 const startReaction = (reaction: Reaction) => {
   const outerReaction = currentReaction;
   currentReaction = reaction;
-  reaction();
   reaction[colorSymbol] = cleanSymbol;
+  reaction();
   currentReaction = outerReaction;
 };
 
@@ -268,5 +268,27 @@ test("for an asymmetrical diamond graph there are glitches and redundant reactio
   expect(readLog()).toMatchInlineSnapshot(`
     > 1
     > 2
+  `);
+});
+
+test("cyclical graph", () => {
+  const [a, setA] = createSignal(2);
+  startReaction(() => {
+    const aValue = a();
+    log.add(label("reaction"))(aValue);
+    if (aValue > 0) {
+      setA(aValue - 1);
+    }
+  });
+  expect(readLog()).toMatchInlineSnapshot(`
+    > [reaction] 2
+    > [reaction] 1
+    > [reaction] 0
+  `);
+  setA(2);
+  expect(readLog()).toMatchInlineSnapshot(`
+    > [reaction] 2
+    > [reaction] 1
+    > [reaction] 0
   `);
 });
