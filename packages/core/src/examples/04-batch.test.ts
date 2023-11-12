@@ -5,6 +5,7 @@ import { log } from "../setupTests";
 const pullersSymbol = Symbol("pullers");
 const puleesSymbol = Symbol("pulees");
 const effectCountSymbol = Symbol("effectCount");
+const colorSymbol = Symbol("color");
 const cleanSymbol = Symbol("clean");
 
 interface Subject {
@@ -16,7 +17,7 @@ interface Reaction {
   (): void;
   [puleesSymbol]?: Subject[];
   [effectCountSymbol]?: number;
-  [cleanSymbol]?: true;
+  [colorSymbol]?: typeof cleanSymbol;
 }
 
 let currentReaction: Reaction | undefined;
@@ -46,7 +47,7 @@ const startReaction = (reaction: Reaction) => {
   const outerReaction = currentReaction;
   currentReaction = reaction;
   reaction();
-  reaction[cleanSymbol] = true;
+  reaction[colorSymbol] = cleanSymbol;
   currentReaction = outerReaction;
 };
 
@@ -113,8 +114,8 @@ const push: { (subject: object): void } = (subject: Subject) => {
     const pullersCopy = [...subject[pullersSymbol]];
     for (let i = 0; i < pullersCopy.length; i++) {
       const puller = pullersCopy[i]!;
-      if (cleanSymbol in puller) {
-        delete puller[cleanSymbol];
+      if (colorSymbol in puller) {
+        delete puller[colorSymbol];
         reactionQueue.push(puller);
       }
     }
