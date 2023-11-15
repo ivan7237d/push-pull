@@ -12,6 +12,7 @@ const sweepersSymbol = Symbol("sweepers");
 const sweepeesSymbol = Symbol("sweepees");
 const colorSymbol = Symbol("color");
 const checkSymbol = Symbol("check");
+const sweepingSymbol = Symbol("sweeping");
 const cleanSymbol = Symbol("clean");
 
 interface Subject {
@@ -24,7 +25,10 @@ interface Reaction {
   [puleesSymbol]?: Subject[];
   [sweepersSymbol]?: Reaction[];
   [sweepeesSymbol]?: Reaction[];
-  [colorSymbol]?: typeof checkSymbol | typeof cleanSymbol;
+  [colorSymbol]?:
+    | typeof checkSymbol
+    | typeof sweepingSymbol
+    | typeof cleanSymbol;
 }
 
 let currentReaction: Reaction | undefined;
@@ -72,6 +76,10 @@ const push: { (subject: object): void } = (subject: Subject) => {
 };
 
 const sweep = (reaction: Reaction) => {
+  if (reaction[colorSymbol] === sweepingSymbol) {
+    throw new Error(`Cyclical sweep.`);
+  }
+
   if (currentReaction) {
     if (sweepersSymbol in reaction) {
       reaction[sweepersSymbol].push(currentReaction);
@@ -89,59 +97,59 @@ const sweep = (reaction: Reaction) => {
     return;
   }
 
-  if (reaction[colorSymbol] === checkSymbol) {
-    // In this case we don't know if the reaction needs to be run, but by
-    // recursively calling `sweep` for sweepees, we'll eventually know one way
-    // or the other.
-    for (let i = 0; i < reaction[sweepeesSymbol]!.length; i++) {
-      sweep(reaction[sweepeesSymbol]![i]!);
-      if (!(colorSymbol in reaction)) {
-        break;
+  outerLoop: do {
+    if (reaction[colorSymbol] === checkSymbol) {
+      reaction[colorSymbol] = sweepingSymbol;
+      // In this case we don't know if the reaction needs to be run, but by
+      // recursively calling `sweep` for sweepees, we'll eventually know one way
+      // or the other unless the reaction is pushed in the meantime.
+      for (let i = 0; i < reaction[sweepeesSymbol]!.length; i++) {
+        sweep(reaction[sweepeesSymbol]![i]!);
+        if (reaction[colorSymbol] !== sweepingSymbol) {
+          continue outerLoop;
+        }
       }
+      // Since all the sweepees are now clean, the `reaction` is also clean.
+      break;
     }
-    // If the reaction is still not dirty, this means we never broke out of the
-    // loop above and all the sweepees are now clean, and so `reaction` is clean
-    // too.
-    if (colorSymbol in reaction) {
-      reaction[colorSymbol] = cleanSymbol;
-      return;
-    }
-  }
 
-  if (puleesSymbol in reaction) {
-    for (let i = 0; i < reaction[puleesSymbol].length; i++) {
-      const pulee = reaction[puleesSymbol][i]!;
-      const pullers: Reaction[] = pulee[pullersSymbol]!;
-      if (pullers.length === 1) {
-        delete pulee[pullersSymbol];
-      } else {
-        const swap = pullers.indexOf(reaction);
-        pullers[swap] = pullers[pullers.length - 1]!;
-        pullers.pop();
+    if (puleesSymbol in reaction) {
+      for (let i = 0; i < reaction[puleesSymbol].length; i++) {
+        const pulee = reaction[puleesSymbol][i]!;
+        const pullers: Reaction[] = pulee[pullersSymbol]!;
+        if (pullers.length === 1) {
+          delete pulee[pullersSymbol];
+        } else {
+          const swap = pullers.indexOf(reaction);
+          pullers[swap] = pullers[pullers.length - 1]!;
+          pullers.pop();
+        }
       }
+      delete reaction[puleesSymbol];
     }
-    delete reaction[puleesSymbol];
-  }
-  if (sweepeesSymbol in reaction) {
-    for (let i = 0; i < reaction[sweepeesSymbol].length; i++) {
-      const sweepee = reaction[sweepeesSymbol][i]!;
-      const sweepers: Reaction[] = sweepee[sweepersSymbol]!;
-      if (sweepers.length === 1) {
-        delete sweepee[sweepersSymbol];
-      } else {
-        const swap = sweepers.indexOf(reaction);
-        sweepers[swap] = sweepers[sweepers.length - 1]!;
-        sweepers.pop();
+    if (sweepeesSymbol in reaction) {
+      for (let i = 0; i < reaction[sweepeesSymbol].length; i++) {
+        const sweepee = reaction[sweepeesSymbol][i]!;
+        const sweepers: Reaction[] = sweepee[sweepersSymbol]!;
+        if (sweepers.length === 1) {
+          delete sweepee[sweepersSymbol];
+        } else {
+          const swap = sweepers.indexOf(reaction);
+          sweepers[swap] = sweepers[sweepers.length - 1]!;
+          sweepers.pop();
+        }
       }
+      delete reaction[sweepeesSymbol];
     }
-    delete reaction[sweepeesSymbol];
-  }
 
-  const outerReaction = currentReaction;
-  currentReaction = reaction;
+    reaction[colorSymbol] = sweepingSymbol;
+    const outerReaction = currentReaction;
+    currentReaction = reaction;
+    reaction();
+    currentReaction = outerReaction;
+  } while (reaction[colorSymbol] !== sweepingSymbol);
+
   reaction[colorSymbol] = cleanSymbol;
-  reaction();
-  currentReaction = outerReaction;
 };
 
 //
@@ -270,7 +278,7 @@ test("for an asymmetrical diamond graph there are no glitches or redundant react
   expect(readLog()).toMatchInlineSnapshot(`> 2`);
 });
 
-test("cyclical graph", () => {
+test("cyclical pull", () => {
   let x = 2;
   const reaction = () => {
     log.add(label("reaction"))(x);
@@ -281,22 +289,31 @@ test("cyclical graph", () => {
     }
   };
   sweep(reaction);
-  expect(readLog()).toMatchInlineSnapshot(`> [reaction] 2`);
-  sweep(reaction);
-  expect(readLog()).toMatchInlineSnapshot(`> [reaction] 1`);
-  sweep(reaction);
-  expect(readLog()).toMatchInlineSnapshot(`> [reaction] 0`);
+  expect(readLog()).toMatchInlineSnapshot(`
+    > [reaction] 2
+    > [reaction] 1
+    > [reaction] 0
+  `);
   sweep(reaction);
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
 
   x = 2;
   push(reaction);
   sweep(reaction);
-  expect(readLog()).toMatchInlineSnapshot(`> [reaction] 2`);
-  sweep(reaction);
-  expect(readLog()).toMatchInlineSnapshot(`> [reaction] 1`);
-  sweep(reaction);
-  expect(readLog()).toMatchInlineSnapshot(`> [reaction] 0`);
+  expect(readLog()).toMatchInlineSnapshot(`
+    > [reaction] 2
+    > [reaction] 1
+    > [reaction] 0
+  `);
   sweep(reaction);
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
+});
+
+test("cyclical sweep", () => {
+  const reaction = () => {
+    sweep(reaction);
+  };
+  expect(() => {
+    sweep(reaction);
+  }).toThrowErrorMatchingInlineSnapshot(`"Cyclical sweep."`);
 });
