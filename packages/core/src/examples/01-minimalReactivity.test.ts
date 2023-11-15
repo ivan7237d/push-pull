@@ -51,13 +51,13 @@ const pull: { (subject: object): void } = (subject: Subject) => {
 /**
  * Internal.
  */
-const pushSweepers = (reaction: Reaction) => {
+const scheduleSweepers = (reaction: Reaction) => {
   if (sweepersSymbol in reaction) {
     for (let i = 0; i < reaction[sweepersSymbol].length; i++) {
       const sweeper = reaction[sweepersSymbol][i]!;
       if (sweeper[colorSymbol] === cleanSymbol) {
         sweeper[colorSymbol] = checkSymbol;
-        pushSweepers(sweeper);
+        scheduleSweepers(sweeper);
       }
     }
   }
@@ -69,7 +69,7 @@ const push: { (subject: object): void } = (subject: Subject) => {
       const puller = subject[pullersSymbol][i]!;
       if (colorSymbol in puller) {
         delete puller[colorSymbol];
-        pushSweepers(puller);
+        scheduleSweepers(puller);
       }
     }
   }
@@ -159,16 +159,16 @@ const sweep = (reaction: Reaction) => {
 const createSignal = <Value>(
   value: Value
 ): readonly [get: () => Value, set: (newValue: Value) => void] => {
-  const subject = {};
+  const get = () => {
+    pull(get);
+    return value;
+  };
   return [
-    () => {
-      pull(subject);
-      return value;
-    },
+    get,
     (newValue: Value) => {
       if (newValue !== value) {
         value = newValue;
-        push(subject);
+        push(get);
       }
     },
   ];
@@ -182,14 +182,16 @@ const createMemo = <Value>(
     const newValue = get();
     if (newValue !== initialValue) {
       initialValue = newValue;
-      push(reaction);
+      // eslint-disable-next-line no-use-before-define
+      push(memo);
     }
   };
-  return () => {
+  const memo = () => {
     sweep(reaction);
-    pull(reaction);
+    pull(memo);
     return initialValue as Value;
   };
+  return memo;
 };
 
 //
