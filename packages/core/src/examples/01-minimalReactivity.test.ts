@@ -174,14 +174,17 @@ const createSignal = <Value>(
   ];
 };
 
-const createMemo = <Value>(
-  get: () => Value,
-  initialValue?: Value
-): (() => Value) => {
+/**
+ * Internal.
+ */
+const voidSymbol = Symbol("void");
+
+const createMemo = <Value>(get: () => Value): (() => Value) => {
+  let value: Value | typeof voidSymbol = voidSymbol;
   const reaction = () => {
     const newValue = get();
-    if (newValue !== initialValue) {
-      initialValue = newValue;
+    if (newValue !== value) {
+      value = newValue;
       // eslint-disable-next-line no-use-before-define
       push(memo);
     }
@@ -189,7 +192,7 @@ const createMemo = <Value>(
   const memo = () => {
     sweep(reaction);
     pull(memo);
-    return initialValue as Value;
+    return value as Value;
   };
   return memo;
 };
