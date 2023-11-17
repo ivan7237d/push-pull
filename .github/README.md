@@ -28,4 +28,4 @@ A _reaction_ is defined as a `() => void` function that would not produce side e
 
 - No subject pulled in the last run has been pushed since
 
-- The reactions swept during the last run would not currently produce side effects
+- The reactions swept during the last run would not produce side effects
