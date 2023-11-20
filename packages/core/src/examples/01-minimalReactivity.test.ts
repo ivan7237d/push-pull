@@ -1,3 +1,22 @@
+/**
+ * This module implements the simplest version of reactivity that I can think
+ * of.
+ *
+ * `push` and `pull` are two functions that take a _subject_, which can be any
+ * object including a function.
+ *
+ * We define a _reaction_ as a `() => void` function that would not produce side
+ * effects if it has been run previously and no subject pulled in the last run
+ * has been pushed since the end of that run.
+ *
+ * This module gives you a function called `sweep` that takes a reaction and
+ * whose job is to give you a guarantee that if you run the reaction immediately
+ * afterwards, it would not produce side effects.
+ *
+ * Down below there are also examples of constructs you can build on top of
+ * push/pull/sweep, and then unit tests.
+ */
+
 import { label } from "@1log/core";
 import { readLog } from "@1log/jest";
 import { log } from "../setupTests";
@@ -6,44 +25,87 @@ import { log } from "../setupTests";
 // Reactivity
 //
 
-const pullersSymbol = Symbol("pullers");
-const puleesSymbol = Symbol("pulees");
-const sweepersSymbol = Symbol("sweepers");
-const sweepeesSymbol = Symbol("sweepees");
+const parentsSymbol = Symbol("parents");
+const childrenSymbol = Symbol("children");
 const colorSymbol = Symbol("color");
 const checkSymbol = Symbol("check");
-const sweepingSymbol = Symbol("sweeping");
+const runningSymbol = Symbol("running");
 const cleanSymbol = Symbol("clean");
+const dirtySymbol = Symbol("dirty");
+
+const subjectReactionErrorMessage =
+  "A function cannot be used as both a reaction and a subject.";
 
 interface Subject {
   // eslint-disable-next-line no-use-before-define
-  [pullersSymbol]?: Reaction[];
+  [parentsSymbol]?: Reaction[];
 }
 
-interface Reaction {
+interface Reaction extends Subject {
   (): void;
-  [puleesSymbol]?: Subject[];
-  [sweepersSymbol]?: Reaction[];
-  [sweepeesSymbol]?: Reaction[];
+  [childrenSymbol]?: (Subject | Reaction)[];
   [colorSymbol]?:
     | typeof checkSymbol
-    | typeof sweepingSymbol
-    | typeof cleanSymbol;
+    | typeof runningSymbol
+    | typeof cleanSymbol
+    | typeof dirtySymbol;
 }
 
 let currentReaction: Reaction | undefined;
 
-const pull: { (subject: object): void } = (subject: Subject) => {
+const addChild = (child: Subject) => {
   if (currentReaction) {
-    if (pullersSymbol in subject) {
-      subject[pullersSymbol].push(currentReaction);
+    if (parentsSymbol in child) {
+      child[parentsSymbol].push(currentReaction);
     } else {
-      subject[pullersSymbol] = [currentReaction];
+      child[parentsSymbol] = [currentReaction];
     }
-    if (puleesSymbol in currentReaction) {
-      currentReaction[puleesSymbol].push(subject);
+    if (childrenSymbol in currentReaction) {
+      currentReaction[childrenSymbol].push(child);
     } else {
-      currentReaction[puleesSymbol] = [subject];
+      currentReaction[childrenSymbol] = [child];
+    }
+  }
+};
+
+const pull: { (subject: object): void } = (subject: Subject) => {
+  if (colorSymbol in subject) {
+    throw new Error(subjectReactionErrorMessage);
+  }
+
+  addChild(subject);
+};
+
+/**
+ * Internal.
+ */
+const pushReaction = (reaction: Reaction) => {
+  if (parentsSymbol in reaction) {
+    for (let i = 0; i < reaction[parentsSymbol].length; i++) {
+      const parent = reaction[parentsSymbol][i]!;
+      if (parent[colorSymbol] === cleanSymbol) {
+        parent[colorSymbol] = checkSymbol;
+        pushReaction(parent);
+      }
+    }
+  }
+};
+
+const push: { (subject: object): void } = (subject: Subject) => {
+  if (colorSymbol in subject) {
+    throw new Error(subjectReactionErrorMessage);
+  }
+
+  if (parentsSymbol in subject) {
+    for (let i = 0; i < subject[parentsSymbol].length; i++) {
+      const parent = subject[parentsSymbol][i]!;
+      if (
+        parent[colorSymbol] === cleanSymbol ||
+        parent[colorSymbol] === checkSymbol
+      ) {
+        parent[colorSymbol] = dirtySymbol;
+        pushReaction(parent);
+      }
     }
   }
 };
@@ -51,105 +113,70 @@ const pull: { (subject: object): void } = (subject: Subject) => {
 /**
  * Internal.
  */
-const scheduleSweepers = (reaction: Reaction) => {
-  if (sweepersSymbol in reaction) {
-    for (let i = 0; i < reaction[sweepersSymbol].length; i++) {
-      const sweeper = reaction[sweepersSymbol][i]!;
-      if (sweeper[colorSymbol] === cleanSymbol) {
-        sweeper[colorSymbol] = checkSymbol;
-        scheduleSweepers(sweeper);
+const sweepInternal = (reaction: Reaction) => {
+  if (reaction[colorSymbol] === checkSymbol) {
+    // In this case we don't know if the reaction needs to be run, but by
+    // recursively calling `sweep` for children, we'll eventually know one way
+    // or the other.
+    for (let i = 0; i < reaction[childrenSymbol]!.length; i++) {
+      const child = reaction[childrenSymbol]![i]!;
+      if (
+        colorSymbol in child &&
+        (child[colorSymbol] === checkSymbol ||
+          child[colorSymbol] === dirtySymbol)
+      ) {
+        sweepInternal(child);
+        if (child[colorSymbol] === dirtySymbol) {
+          break;
+        }
       }
     }
+    // If the reaction is still not dirty, this means we never broke out of the
+    // loop above and all the children are now clean, and so `reaction` is clean
+    // too.
+    if (reaction[colorSymbol] === checkSymbol) {
+      reaction[colorSymbol] = cleanSymbol;
+      return;
+    }
   }
-};
 
-const push: { (subject: object): void } = (subject: Subject) => {
-  if (pullersSymbol in subject) {
-    for (let i = 0; i < subject[pullersSymbol].length; i++) {
-      const puller = subject[pullersSymbol][i]!;
-      if (colorSymbol in puller) {
-        delete puller[colorSymbol];
-        scheduleSweepers(puller);
+  if (childrenSymbol in reaction) {
+    for (let i = 0; i < reaction[childrenSymbol].length; i++) {
+      const child = reaction[childrenSymbol][i]!;
+      const parents: Reaction[] = child[parentsSymbol]!;
+      if (parents.length === 1) {
+        delete child[parentsSymbol];
+      } else {
+        const swap = parents.indexOf(reaction);
+        parents[swap] = parents[parents.length - 1]!;
+        parents.pop();
       }
     }
+    delete reaction[childrenSymbol];
   }
+
+  reaction[colorSymbol] = runningSymbol;
+  const outerReaction = currentReaction;
+  currentReaction = reaction;
+  reaction();
+  currentReaction = outerReaction;
+  reaction[colorSymbol] = cleanSymbol;
 };
 
 const sweep = (reaction: Reaction) => {
-  if (reaction[colorSymbol] === sweepingSymbol) {
+  if (!(colorSymbol in reaction) && parentsSymbol in reaction) {
+    throw new Error(subjectReactionErrorMessage);
+  }
+
+  if (reaction[colorSymbol] === runningSymbol) {
     throw new Error(`Cyclical sweep.`);
   }
 
-  if (currentReaction) {
-    if (sweepersSymbol in reaction) {
-      reaction[sweepersSymbol].push(currentReaction);
-    } else {
-      reaction[sweepersSymbol] = [currentReaction];
-    }
-    if (sweepeesSymbol in currentReaction) {
-      currentReaction[sweepeesSymbol].push(reaction);
-    } else {
-      currentReaction[sweepeesSymbol] = [reaction];
-    }
+  addChild(reaction);
+
+  if (reaction[colorSymbol] !== cleanSymbol) {
+    sweepInternal(reaction);
   }
-
-  if (reaction[colorSymbol] === cleanSymbol) {
-    return;
-  }
-
-  outerLoop: do {
-    if (reaction[colorSymbol] === checkSymbol) {
-      reaction[colorSymbol] = sweepingSymbol;
-      // In this case we don't know if the reaction needs to be run, but by
-      // recursively calling `sweep` for sweepees, we'll eventually know one way
-      // or the other unless the reaction is pushed in the meantime.
-      for (let i = 0; i < reaction[sweepeesSymbol]!.length; i++) {
-        sweep(reaction[sweepeesSymbol]![i]!);
-        if (reaction[colorSymbol] !== sweepingSymbol) {
-          continue outerLoop;
-        }
-      }
-      // Since all the sweepees are now clean, the `reaction` is also clean.
-      break;
-    }
-
-    if (puleesSymbol in reaction) {
-      for (let i = 0; i < reaction[puleesSymbol].length; i++) {
-        const pulee = reaction[puleesSymbol][i]!;
-        const pullers: Reaction[] = pulee[pullersSymbol]!;
-        if (pullers.length === 1) {
-          delete pulee[pullersSymbol];
-        } else {
-          const swap = pullers.indexOf(reaction);
-          pullers[swap] = pullers[pullers.length - 1]!;
-          pullers.pop();
-        }
-      }
-      delete reaction[puleesSymbol];
-    }
-    if (sweepeesSymbol in reaction) {
-      for (let i = 0; i < reaction[sweepeesSymbol].length; i++) {
-        const sweepee = reaction[sweepeesSymbol][i]!;
-        const sweepers: Reaction[] = sweepee[sweepersSymbol]!;
-        if (sweepers.length === 1) {
-          delete sweepee[sweepersSymbol];
-        } else {
-          const swap = sweepers.indexOf(reaction);
-          sweepers[swap] = sweepers[sweepers.length - 1]!;
-          sweepers.pop();
-        }
-      }
-      delete reaction[sweepeesSymbol];
-    }
-
-    reaction[colorSymbol] = sweepingSymbol;
-    const outerReaction = currentReaction;
-    currentReaction = reaction;
-    reaction();
-    currentReaction = outerReaction;
-  } while (reaction[colorSymbol] !== sweepingSymbol);
-
-  reaction[colorSymbol] = cleanSymbol;
 };
 
 //
@@ -281,35 +308,6 @@ test("for an asymmetrical diamond graph there are no glitches or redundant react
   setA(1);
   sweep(reaction);
   expect(readLog()).toMatchInlineSnapshot(`> 2`);
-});
-
-test("cyclical pull", () => {
-  const [a, setA] = createSignal(2);
-  const reaction = () => {
-    const value = a();
-    log.add(label("reaction"))(value);
-    if (value > 0) {
-      setA(value - 1);
-    }
-  };
-  sweep(reaction);
-  expect(readLog()).toMatchInlineSnapshot(`
-    > [reaction] 2
-    > [reaction] 1
-    > [reaction] 0
-  `);
-  sweep(reaction);
-  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
-
-  setA(2);
-  sweep(reaction);
-  expect(readLog()).toMatchInlineSnapshot(`
-    > [reaction] 2
-    > [reaction] 1
-    > [reaction] 0
-  `);
-  sweep(reaction);
-  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
 });
 
 test("cyclical sweep", () => {
