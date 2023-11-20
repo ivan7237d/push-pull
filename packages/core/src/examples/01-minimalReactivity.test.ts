@@ -53,6 +53,9 @@ interface Reaction extends Subject {
 
 let currentReaction: Reaction | undefined;
 
+/**
+ * Internal.
+ */
 const addChild = (child: Subject) => {
   if (currentReaction) {
     if (parentsSymbol in child) {
