@@ -32,6 +32,7 @@ const checkSymbol = Symbol("check");
 const runningSymbol = Symbol("running");
 const cleanSymbol = Symbol("clean");
 const dirtySymbol = Symbol("dirty");
+const unchangedChildrenCountSymbol = Symbol("unchangedChildrenCount");
 
 const subjectReactionErrorMessage =
   "A function cannot be used as both a reaction and a subject.";
@@ -49,6 +50,7 @@ interface Reaction extends Subject {
     | typeof runningSymbol
     | typeof cleanSymbol
     | typeof dirtySymbol;
+  [unchangedChildrenCountSymbol]?: number;
 }
 
 let currentReaction: Reaction | undefined;
@@ -56,8 +58,37 @@ let currentReaction: Reaction | undefined;
 /**
  * Internal.
  */
+const removeFromChildren = (startingIndex: number) => {
+  const children = currentReaction![childrenSymbol]!;
+  for (let i = startingIndex; i < children.length; i++) {
+    const child = children[i]!;
+    const parents = child[parentsSymbol]!;
+    if (parents.length === 1) {
+      delete child[parentsSymbol];
+    } else {
+      const swap = parents.indexOf(currentReaction!);
+      parents[swap] = parents[parents.length - 1]!;
+      parents.pop();
+    }
+  }
+};
+
+/**
+ * Internal.
+ */
 const addChild = (child: Subject) => {
   if (currentReaction) {
+    const unchangedChildrenCount =
+      currentReaction[unchangedChildrenCountSymbol];
+    if (unchangedChildrenCount !== undefined) {
+      if (currentReaction[childrenSymbol]![unchangedChildrenCount] === child) {
+        currentReaction[unchangedChildrenCountSymbol]!++;
+        return;
+      }
+      removeFromChildren(unchangedChildrenCount);
+      currentReaction[childrenSymbol]!.length = unchangedChildrenCount;
+      delete currentReaction[unchangedChildrenCountSymbol];
+    }
     if (parentsSymbol in child) {
       child[parentsSymbol].push(currentReaction);
     } else {
@@ -143,27 +174,25 @@ const sweepInternal = (reaction: Reaction) => {
     }
   }
 
-  if (childrenSymbol in reaction) {
-    for (let i = 0; i < reaction[childrenSymbol].length; i++) {
-      const child = reaction[childrenSymbol][i]!;
-      const parents: Reaction[] = child[parentsSymbol]!;
-      if (parents.length === 1) {
-        delete child[parentsSymbol];
-      } else {
-        const swap = parents.indexOf(reaction);
-        parents[swap] = parents[parents.length - 1]!;
-        parents.pop();
-      }
-    }
-    delete reaction[childrenSymbol];
-  }
-
-  reaction[colorSymbol] = runningSymbol;
   const outerReaction = currentReaction;
   currentReaction = reaction;
-  reaction();
+  if (childrenSymbol in currentReaction) {
+    currentReaction[unchangedChildrenCountSymbol] = 0;
+  }
+  currentReaction[colorSymbol] = runningSymbol;
+  currentReaction();
+  const unchangedChildrenCount = currentReaction[unchangedChildrenCountSymbol];
+  if (unchangedChildrenCount !== undefined) {
+    removeFromChildren(unchangedChildrenCount);
+    if (unchangedChildrenCount === 0) {
+      delete currentReaction[childrenSymbol];
+    } else {
+      currentReaction[childrenSymbol]!.length = unchangedChildrenCount;
+    }
+    delete currentReaction[unchangedChildrenCountSymbol];
+  }
+  currentReaction[colorSymbol] = cleanSymbol;
   currentReaction = outerReaction;
-  reaction[colorSymbol] = cleanSymbol;
 };
 
 const sweep = (reaction: Reaction) => {
