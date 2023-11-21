@@ -33,7 +33,6 @@ const callbackSymbol = Symbol("callback");
 const childrenSymbol = Symbol("children");
 const stateSymbol = Symbol("state");
 const conditionallyCleanSymbol = Symbol("conditionallyClean");
-const runningSymbol = Symbol("running");
 const cleanSymbol = Symbol("clean");
 const unchangedChildrenCountSymbol = Symbol("unchangedChildrenCount");
 
@@ -45,10 +44,7 @@ interface Subject {
 interface Reaction extends Subject {
   [callbackSymbol]: () => void;
   [childrenSymbol]?: (Subject | Reaction)[];
-  [stateSymbol]?:
-    | typeof conditionallyCleanSymbol
-    | typeof runningSymbol
-    | typeof cleanSymbol;
+  [stateSymbol]?: typeof conditionallyCleanSymbol | typeof cleanSymbol;
   [unchangedChildrenCountSymbol]?: number;
 }
 
@@ -73,7 +69,7 @@ const updateParents = (
       const parent = subject[parentsSymbol][i]!;
       if (
         parent[stateSymbol] === cleanSymbol ||
-        (!state && parent[stateSymbol] === conditionallyCleanSymbol)
+        (!state && stateSymbol in parent)
       ) {
         if (state) {
           parent[stateSymbol] = state;
@@ -133,11 +129,7 @@ const sweep = (reaction: Reaction) => {
     // or the other.
     for (let i = 0; i < reaction[childrenSymbol]!.length; i++) {
       const child = reaction[childrenSymbol]![i]!;
-      if (
-        callbackSymbol in child &&
-        (!(stateSymbol in child) ||
-          child[stateSymbol] === conditionallyCleanSymbol)
-      ) {
+      if (callbackSymbol in child && child[stateSymbol] !== cleanSymbol) {
         sweep(child);
         if (!(stateSymbol in child)) {
           break;
@@ -158,7 +150,6 @@ const sweep = (reaction: Reaction) => {
   if (childrenSymbol in currentReaction) {
     currentReaction[unchangedChildrenCountSymbol] = 0;
   }
-  currentReaction[stateSymbol] = runningSymbol;
   currentReaction[callbackSymbol]();
   const unchangedChildrenCount = currentReaction[unchangedChildrenCountSymbol];
   if (unchangedChildrenCount !== undefined) {
