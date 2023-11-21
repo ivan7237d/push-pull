@@ -84,17 +84,18 @@ const updateParents = (
   if (parentsSymbol in subject) {
     for (let i = 0; i < subject[parentsSymbol].length; i++) {
       const parent = subject[parentsSymbol][i]!;
-      if (
-        parent[stateSymbol] === cleanSymbol ||
-        (!state && stateSymbol in parent)
-      ) {
-        if (state) {
-          parent[stateSymbol] = state;
+      if (state) {
+        if (parent[stateSymbol] === cleanSymbol) {
+          parent[stateSymbol] = conditionallyCleanSymbol;
         } else {
-          delete parent[stateSymbol];
+          continue;
         }
-        updateParents(parent, conditionallyCleanSymbol);
+      } else if (stateSymbol in parent) {
+        delete parent[stateSymbol];
+      } else {
+        continue;
       }
+      updateParents(parent, conditionallyCleanSymbol);
     }
   }
 };
@@ -156,7 +157,7 @@ const sweep = (reaction: Reaction) => {
     // If the reaction is still not dirty, this means we never broke out of the
     // loop above and all the children are now clean, and so `reaction` is clean
     // too.
-    if (reaction[stateSymbol] === conditionallyCleanSymbol) {
+    if (stateSymbol in reaction) {
       reaction[stateSymbol] = cleanSymbol;
       return;
     }
