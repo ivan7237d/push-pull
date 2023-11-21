@@ -5,14 +5,11 @@
  * The way I'm looking at it here, reactive programming is all about the concept
  * of a subroutine that produces some side effects if you run it once, but then
  * until something happens it will not produce side effects if you run it again.
- * I'm going to call this type of subroutine a _reaction_. My intuition goes
- * like this: the purpose of a subroutine is to provide you as a developer some
- * guarantee; this guarantee would hold right after the subroutine is done, but
- * would not necessarily hold forever. Now what if we do want the guarantee to
- * always hold? If the subroutine is a reaction as defined above, we can achieve
- * this by re-running the reaction immediately after something happens that
- * could cause it to produce side effects. A reaction is then essentially a
- * subroutine whose associated guarantee always holds.
+ * I'm going to call this type of subroutine a _reaction_. My intuition here is
+ * that whereas a regular subroutine has to be invoked imperatively by another
+ * subroutine, all the way up to the entry point, a reaction decides itself when
+ * it needs to run - specifically, it runs whenever something happens that could
+ * cause it to have side effects.
  *
  * `push` and `pull` are two functions that take a _subject_, which can be any
  * object including a function.
