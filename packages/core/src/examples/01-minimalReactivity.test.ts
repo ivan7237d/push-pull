@@ -2,6 +2,9 @@
  * This module implements the simplest version of reactivity that I can think
  * of.
  *
+ * "I want the side effects of a specific ("observed") reaction to be such as if
+ * all the reactions were clean"
+ *
  * `push` and `pull` are two functions that take a _subject_, which can be any
  * object including a function.
  *
@@ -26,16 +29,13 @@ import { log } from "../setupTests";
 //
 
 const parentsSymbol = Symbol("parents");
+const callbackSymbol = Symbol("callback");
 const childrenSymbol = Symbol("children");
-const colorSymbol = Symbol("color");
-const checkSymbol = Symbol("check");
+const stateSymbol = Symbol("state");
+const conditionallyCleanSymbol = Symbol("conditionallyClean");
 const runningSymbol = Symbol("running");
 const cleanSymbol = Symbol("clean");
-const dirtySymbol = Symbol("dirty");
 const unchangedChildrenCountSymbol = Symbol("unchangedChildrenCount");
-
-const subjectReactionErrorMessage =
-  "A function cannot be used as both a reaction and a subject.";
 
 interface Subject {
   // eslint-disable-next-line no-use-before-define
@@ -43,17 +43,64 @@ interface Subject {
 }
 
 interface Reaction extends Subject {
-  (): void;
+  [callbackSymbol]: () => void;
   [childrenSymbol]?: (Subject | Reaction)[];
-  [colorSymbol]?:
-    | typeof checkSymbol
+  [stateSymbol]?:
+    | typeof conditionallyCleanSymbol
     | typeof runningSymbol
-    | typeof cleanSymbol
-    | typeof dirtySymbol;
+    | typeof cleanSymbol;
   [unchangedChildrenCountSymbol]?: number;
 }
 
 let currentReaction: Reaction | undefined;
+
+const createReaction = (callback: () => void): Reaction => ({
+  [callbackSymbol]: callback,
+});
+
+/**
+ * Internal.
+ */
+const updateParents = (
+  subject: Subject,
+  state?: typeof conditionallyCleanSymbol
+) => {
+  if (parentsSymbol in subject) {
+    for (let i = 0; i < subject[parentsSymbol].length; i++) {
+      const parent = subject[parentsSymbol][i]!;
+      if (
+        parent[stateSymbol] === cleanSymbol ||
+        (!state && parent[stateSymbol] === conditionallyCleanSymbol)
+      ) {
+        if (state) {
+          parent[stateSymbol] = state;
+        } else {
+          delete parent[stateSymbol];
+        }
+        updateParents(parent, conditionallyCleanSymbol);
+      }
+    }
+  }
+};
+
+const push: { (subject?: object): void } = (subject?: Subject) => {
+  if (currentReaction) {
+    if (subject !== undefined) {
+      throw new Error(
+        "A reaction cannot call `push` with an argument: it can only push itself, which is done by calling `push` with no arguments."
+      );
+    }
+    subject = currentReaction;
+  } else {
+    if (subject === undefined) {
+      throw new Error(
+        "`push` can be called without arguments only inside a reaction."
+      );
+    }
+  }
+
+  updateParents(subject);
+};
 
 /**
  * Internal.
@@ -76,91 +123,20 @@ const removeFromChildren = (startingIndex: number) => {
 /**
  * Internal.
  */
-const addChild = (child: Subject) => {
-  if (currentReaction) {
-    const unchangedChildrenCount =
-      currentReaction[unchangedChildrenCountSymbol];
-    if (unchangedChildrenCount !== undefined) {
-      if (currentReaction[childrenSymbol]![unchangedChildrenCount] === child) {
-        currentReaction[unchangedChildrenCountSymbol]!++;
-        return;
-      }
-      removeFromChildren(unchangedChildrenCount);
-      currentReaction[childrenSymbol]!.length = unchangedChildrenCount;
-      delete currentReaction[unchangedChildrenCountSymbol];
-    }
-    if (parentsSymbol in child) {
-      child[parentsSymbol].push(currentReaction);
-    } else {
-      child[parentsSymbol] = [currentReaction];
-    }
-    if (childrenSymbol in currentReaction) {
-      currentReaction[childrenSymbol].push(child);
-    } else {
-      currentReaction[childrenSymbol] = [child];
-    }
-  }
-};
-
-const pull: { (subject: object): void } = (subject: Subject) => {
-  if (colorSymbol in subject) {
-    throw new Error(subjectReactionErrorMessage);
-  }
-
-  addChild(subject);
-};
-
-/**
- * Internal.
- */
-const pushReaction = (reaction: Reaction) => {
-  if (parentsSymbol in reaction) {
-    for (let i = 0; i < reaction[parentsSymbol].length; i++) {
-      const parent = reaction[parentsSymbol][i]!;
-      if (parent[colorSymbol] === cleanSymbol) {
-        parent[colorSymbol] = checkSymbol;
-        pushReaction(parent);
-      }
-    }
-  }
-};
-
-const push: { (subject: object): void } = (subject: Subject) => {
-  if (colorSymbol in subject) {
-    throw new Error(subjectReactionErrorMessage);
-  }
-
-  if (parentsSymbol in subject) {
-    for (let i = 0; i < subject[parentsSymbol].length; i++) {
-      const parent = subject[parentsSymbol][i]!;
-      if (
-        parent[colorSymbol] === cleanSymbol ||
-        parent[colorSymbol] === checkSymbol
-      ) {
-        parent[colorSymbol] = dirtySymbol;
-        pushReaction(parent);
-      }
-    }
-  }
-};
-
-/**
- * Internal.
- */
-const sweepInternal = (reaction: Reaction) => {
-  if (reaction[colorSymbol] === checkSymbol) {
+const sweep = (reaction: Reaction) => {
+  if (reaction[stateSymbol] === conditionallyCleanSymbol) {
     // In this case we don't know if the reaction needs to be run, but by
     // recursively calling `sweep` for children, we'll eventually know one way
     // or the other.
     for (let i = 0; i < reaction[childrenSymbol]!.length; i++) {
       const child = reaction[childrenSymbol]![i]!;
       if (
-        colorSymbol in child &&
-        (child[colorSymbol] === checkSymbol ||
-          child[colorSymbol] === dirtySymbol)
+        callbackSymbol in child &&
+        (!(stateSymbol in child) ||
+          child[stateSymbol] === conditionallyCleanSymbol)
       ) {
-        sweepInternal(child);
-        if (child[colorSymbol] === dirtySymbol) {
+        sweep(child);
+        if (!(stateSymbol in child)) {
           break;
         }
       }
@@ -168,8 +144,8 @@ const sweepInternal = (reaction: Reaction) => {
     // If the reaction is still not dirty, this means we never broke out of the
     // loop above and all the children are now clean, and so `reaction` is clean
     // too.
-    if (reaction[colorSymbol] === checkSymbol) {
-      reaction[colorSymbol] = cleanSymbol;
+    if (reaction[stateSymbol] === conditionallyCleanSymbol) {
+      reaction[stateSymbol] = cleanSymbol;
       return;
     }
   }
@@ -179,8 +155,8 @@ const sweepInternal = (reaction: Reaction) => {
   if (childrenSymbol in currentReaction) {
     currentReaction[unchangedChildrenCountSymbol] = 0;
   }
-  currentReaction[colorSymbol] = runningSymbol;
-  currentReaction();
+  currentReaction[stateSymbol] = runningSymbol;
+  currentReaction[callbackSymbol]();
   const unchangedChildrenCount = currentReaction[unchangedChildrenCountSymbol];
   if (unchangedChildrenCount !== undefined) {
     removeFromChildren(unchangedChildrenCount);
@@ -191,23 +167,38 @@ const sweepInternal = (reaction: Reaction) => {
     }
     delete currentReaction[unchangedChildrenCountSymbol];
   }
-  currentReaction[colorSymbol] = cleanSymbol;
+  currentReaction[stateSymbol] = cleanSymbol;
   currentReaction = outerReaction;
 };
 
-const sweep = (reaction: Reaction) => {
-  if (!(colorSymbol in reaction) && parentsSymbol in reaction) {
-    throw new Error(subjectReactionErrorMessage);
+const pull: { (subject: object): void } = (subject: Subject | Reaction) => {
+  if (currentReaction) {
+    const unchangedChildrenCount =
+      currentReaction[unchangedChildrenCountSymbol];
+    if (unchangedChildrenCount !== undefined) {
+      if (
+        currentReaction[childrenSymbol]![unchangedChildrenCount] === subject
+      ) {
+        currentReaction[unchangedChildrenCountSymbol]!++;
+        return;
+      }
+      removeFromChildren(unchangedChildrenCount);
+      currentReaction[childrenSymbol]!.length = unchangedChildrenCount;
+      delete currentReaction[unchangedChildrenCountSymbol];
+    }
+    if (parentsSymbol in subject) {
+      subject[parentsSymbol].push(currentReaction);
+    } else {
+      subject[parentsSymbol] = [currentReaction];
+    }
+    if (childrenSymbol in currentReaction) {
+      currentReaction[childrenSymbol].push(subject);
+    } else {
+      currentReaction[childrenSymbol] = [subject];
+    }
   }
-
-  if (reaction[colorSymbol] === runningSymbol) {
-    throw new Error(`Cyclical sweep.`);
-  }
-
-  addChild(reaction);
-
-  if (reaction[colorSymbol] !== cleanSymbol) {
-    sweepInternal(reaction);
+  if (callbackSymbol in subject && subject[stateSymbol] !== cleanSymbol) {
+    sweep(subject);
   }
 };
 
@@ -240,20 +231,17 @@ const voidSymbol = Symbol("void");
 
 const createMemo = <Value>(get: () => Value): (() => Value) => {
   let value: Value | typeof voidSymbol = voidSymbol;
-  const reaction = () => {
+  const reaction = createReaction(() => {
     const newValue = get();
     if (newValue !== value) {
       value = newValue;
-      // eslint-disable-next-line no-use-before-define
-      push(memo);
+      push();
     }
-  };
-  const memo = () => {
-    sweep(reaction);
-    pull(memo);
+  });
+  return () => {
+    pull(reaction);
     return value as Value;
   };
-  return memo;
 };
 
 //
@@ -262,57 +250,58 @@ const createMemo = <Value>(get: () => Value): (() => Value) => {
 
 test("reaction", () => {
   const subject = {};
-  const reaction = () => {
+  const reaction = createReaction(() => {
     pull(subject);
     log("reaction");
-  };
-  sweep(reaction);
+  });
+  pull(reaction);
   expect(readLog()).toMatchInlineSnapshot(`> "reaction"`);
-  sweep(reaction);
+  pull(reaction);
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
   push(subject);
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
-  sweep(reaction);
+  pull(reaction);
   expect(readLog()).toMatchInlineSnapshot(`> "reaction"`);
 });
 
 test("signal", () => {
   const [x, setX] = createSignal(0);
   expect(x()).toMatchInlineSnapshot(`0`);
-  const reaction = () => {
+  const reaction = createReaction(() => {
     log.add(label("reaction"))(x());
-  };
-  sweep(reaction);
+  });
+  pull(reaction);
   expect(readLog()).toMatchInlineSnapshot(`> [reaction] 0`);
-  sweep(reaction);
+  pull(reaction);
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
   setX(1);
-  sweep(reaction);
+  pull(reaction);
   expect(readLog()).toMatchInlineSnapshot(`> [reaction] 1`);
   setX(1);
-  sweep(reaction);
+  pull(reaction);
   expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
 });
 
 test("memo", () => {
   const [x, setX] = createSignal(0);
   const memo = createMemo(() => log.add(label("memo"))(Math.min(x() * 2, 10)));
-  const reaction = () => {
+  expect(memo()).toMatchInlineSnapshot(`0`);
+  const reaction = createReaction(() => {
     log.add(label("reaction"))(memo());
-  };
-  sweep(reaction);
+  });
+  pull(reaction);
   expect(readLog()).toMatchInlineSnapshot(`
     > [memo] 0
     > [reaction] 0
   `);
   setX(5);
-  sweep(reaction);
+  pull(reaction);
   expect(readLog()).toMatchInlineSnapshot(`
     > [memo] 10
     > [reaction] 10
   `);
   setX(6);
-  sweep(reaction);
+  pull(reaction);
   expect(readLog()).toMatchInlineSnapshot(`> [memo] 10`);
 });
 
@@ -332,21 +321,33 @@ test("for an asymmetrical diamond graph there are no glitches or redundant react
   const b = createMemo(() => a());
   const c = createMemo(() => a());
   const d = createMemo(() => c());
-  const reaction = () => {
+  const e = createReaction(() => {
     log(b() + d());
-  };
-  sweep(reaction);
+  });
+  pull(e);
   expect(readLog()).toMatchInlineSnapshot(`> 0`);
   setA(1);
-  sweep(reaction);
+  pull(e);
   expect(readLog()).toMatchInlineSnapshot(`> 2`);
 });
 
-test("cyclical sweep", () => {
-  const reaction = () => {
-    sweep(reaction);
-  };
-  expect(() => {
-    sweep(reaction);
-  }).toThrowErrorMatchingInlineSnapshot(`"Cyclical sweep."`);
+test("cyclical pull", () => {
+  let a = 2;
+  const reaction = createReaction(() => {
+    log.add(label("reaction start"))(a);
+    if (a > 0) {
+      a--;
+      pull(reaction);
+    }
+    log.add(label("reaction end"))(a);
+  });
+  pull(reaction);
+  expect(readLog()).toMatchInlineSnapshot(`
+    > [reaction start] 2
+    > [reaction start] 1
+    > [reaction end] 0
+    > [reaction end] 0
+  `);
+  pull(reaction);
+  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
 });
