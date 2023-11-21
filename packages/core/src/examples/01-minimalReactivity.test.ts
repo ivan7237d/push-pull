@@ -2,8 +2,17 @@
  * This module implements the simplest version of reactivity that I can think
  * of.
  *
- * "I want the side effects of a specific ("observed") reaction to be such as if
- * all the reactions were clean"
+ * The way I'm looking at it here, reactive programming is all about the concept
+ * of a subroutine that produces some side effects if you run it once, but then
+ * until something happens it will not produce side effects if you run it again.
+ * I'm going to call this type of subroutine a _reaction_. My intuition goes
+ * like this: the purpose of a subroutine is to provide you as a developer some
+ * guarantee; this guarantee would hold right after the subroutine is done, but
+ * would not necessarily hold forever. Now what if we do want the guarantee to
+ * always hold? If the subroutine is a reaction as defined above, we can achieve
+ * this by re-running the reaction immediately after something happens that
+ * could cause it to produce side effects. The concept of a reaction is thus
+ * related to guarantees that last over time.
  *
  * `push` and `pull` are two functions that take a _subject_, which can be any
  * object including a function.
@@ -11,6 +20,17 @@
  * We define a _reaction_ as a `() => void` function that would not produce side
  * effects if it has been run previously and no subject pulled in the last run
  * has been pushed since the end of that run.
+ *
+ * With this definition of a reaction, it becomes clear what `push`, `pull` and
+ * a subject represent: a subject is a set of side effects, `push` notifies that
+ * a side effect inside a specific subject has ocurred, and `pull` is a way to
+ * indicate that some set of side effects has a bearing on what the reaction
+ * that `pull`s would do.
+ *
+ *
+ *
+ * "I want the side effects of a specific ("observed") reaction to be such as if
+ * all the reactions were clean"
  *
  * This module gives you a function called `sweep` that takes a reaction and
  * whose job is to give you a guarantee that if you run the reaction immediately
