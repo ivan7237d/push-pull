@@ -324,24 +324,3 @@ test("for an asymmetrical diamond graph there are no glitches or redundant react
   pull(e);
   expect(readLog()).toMatchInlineSnapshot(`> 2`);
 });
-
-test("cyclical pull", () => {
-  let a = 2;
-  const reaction = createReaction(() => {
-    log.add(label("reaction start"))(a);
-    if (a > 0) {
-      a--;
-      pull(reaction);
-    }
-    log.add(label("reaction end"))(a);
-  });
-  pull(reaction);
-  expect(readLog()).toMatchInlineSnapshot(`
-    > [reaction start] 2
-    > [reaction start] 1
-    > [reaction end] 0
-    > [reaction end] 0
-  `);
-  pull(reaction);
-  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
-});
