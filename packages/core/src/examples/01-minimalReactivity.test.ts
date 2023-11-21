@@ -4,12 +4,12 @@
  *
  * The way I'm looking at it here, reactive programming is all about the concept
  * of a subroutine that produces some side effects if you run it once, but then
- * until something happens it will not produce side effects if you run it again.
- * I'm going to call this type of subroutine a _reaction_. My intuition here is
- * that whereas a regular subroutine has to be invoked imperatively by another
- * subroutine, all the way up to the entry point, a reaction decides itself when
- * it needs to run - specifically, it runs whenever something happens that could
- * cause it to have side effects.
+ * until something happens, it will not produce side effects if you run it
+ * again. I'm going to call this type of subroutine a _reaction_. My intuition
+ * here is that whereas a regular subroutine has to be invoked imperatively by
+ * another subroutine, all the way up to the entry point, a reaction decides
+ * itself when it needs to run - specifically, it runs whenever something
+ * happens that could cause it to have side effects.
  *
  * `push` and `pull` are two functions that take a _subject_, which can be any
  * object including a function.
