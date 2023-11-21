@@ -52,6 +52,9 @@ interface Reaction extends Subject {
   [unchangedChildrenCountSymbol]?: number;
 }
 
+/**
+ * Internal.
+ */
 let currentReaction: Reaction | undefined;
 
 const createReaction = (callback: () => void): Reaction => ({
