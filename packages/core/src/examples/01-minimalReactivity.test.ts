@@ -11,8 +11,8 @@
  * would not necessarily hold forever. Now what if we do want the guarantee to
  * always hold? If the subroutine is a reaction as defined above, we can achieve
  * this by re-running the reaction immediately after something happens that
- * could cause it to produce side effects. The concept of a reaction is thus
- * related to guarantees that last over time.
+ * could cause it to produce side effects. A reaction is then essentially a
+ * subroutine whose associated guarantee always holds.
  *
  * `push` and `pull` are two functions that take a _subject_, which can be any
  * object including a function.
