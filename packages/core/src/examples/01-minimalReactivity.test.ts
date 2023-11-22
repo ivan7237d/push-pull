@@ -2,6 +2,31 @@
  * This module implements the simplest version of reactivity that I can think
  * of.
  *
+ * On the level of intuition, I think of reactive programming as having to do
+ * with functions that instead of running once, run continually. I'll call these
+ * functions reactions. If a regular function is a point on the time axis, a
+ * reaction is a line. It should become possible to have reactions in the
+ * context of finite compute resources if we put in a restriction that once a
+ * reaction runs, running it again would not produce side effects for a period
+ * of time. With that restriction, even though we can't actually run a reaction
+ * continually, we can make it so that side effects are _as if_ it was run
+ * continually.
+ *
+ * A _subject_ is a JavaScript object (including a function) that's used to
+ * track side effects. The client must _push_ the subject by calling
+ * `push(subject)` after side effects occur.
+ *
+ * A _reaction_ is a subject that represents side effects of some `() => void`
+ * function (the _reaction callback_) that does not depend .
+ *
+ * We say that a reaction is _clean_ if the reaction callback would not produce
+ * any side effects.
+ *
+ * `pull(subject)` ensures that the side effects associated with `subject` are
+ * as if all the reactions were clean.
+ *
+ *
+ *
  * The way I'm looking at it here, reactive programming is all about the concept
  * of a subroutine that produces some side effects if you run it once, but then
  * until something happens, it will not produce side effects if you run it
