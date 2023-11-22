@@ -5,10 +5,10 @@
  * On the level of intuition, I think of reactive programming as having to do
  * with functions that instead of running once, run continually. I'll call these
  * functions reactions. If a regular function is a point on the time axis, a
- * reaction is a line. It should become possible to have reactions in the
- * context of finite compute resources if we put in a restriction that once a
- * reaction runs, running it again would not produce side effects for a period
- * of time. With that restriction, even though we can't actually run a reaction
+ * reaction is a line. It becomes possible to have reactions in the context of
+ * finite compute resources if we put in a restriction that once a reaction
+ * runs, running it again would not produce side effects for a period of time.
+ * With that restriction, even though we can't actually run a reaction
  * continually, we can make it so that side effects are _as if_ it was run
  * continually.
  *
