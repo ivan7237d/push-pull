@@ -144,7 +144,7 @@ const push: { (subject?: object): void } = (
 /**
  * Internal.
  */
-const removeFromChildren = (startingIndex: number) => {
+const removeCurrentReactionFromChildren = (startingIndex: number) => {
   const children = currentReaction![childrenSymbol]!;
   for (let i = startingIndex; i < children.length; i++) {
     const child = children[i]!;
@@ -193,7 +193,7 @@ const sweep = (reaction: Reaction) => {
   currentReaction[callbackSymbol]();
   const unchangedChildrenCount = currentReaction[unchangedChildrenCountSymbol];
   if (unchangedChildrenCount !== undefined) {
-    removeFromChildren(unchangedChildrenCount);
+    removeCurrentReactionFromChildren(unchangedChildrenCount);
     if (unchangedChildrenCount === 0) {
       delete currentReaction[childrenSymbol];
     } else {
@@ -216,7 +216,7 @@ const pull: { (subject: object): void } = (subject: Subject | Reaction) => {
         currentReaction[unchangedChildrenCountSymbol]!++;
         return;
       }
-      removeFromChildren(unchangedChildrenCount);
+      removeCurrentReactionFromChildren(unchangedChildrenCount);
       currentReaction[childrenSymbol]!.length = unchangedChildrenCount;
       delete currentReaction[unchangedChildrenCountSymbol];
     }
