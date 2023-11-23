@@ -3,14 +3,14 @@
  * of.
  *
  * On the level of intuition, I think of reactive programming as having to do
- * with functions that instead of running once, run continually. I'll call these
- * functions reactions. If a regular function is a point on the time axis, a
- * reaction is a line. It becomes possible to have reactions in the context of
- * finite compute resources if we put in a restriction that once a reaction
- * runs, running it again would not produce side effects for a period of time.
- * With that restriction, even though we can't actually run a reaction
- * continually, we can make it so that side effects are _as if_ it was run
- * continually.
+ * with subroutines that instead of running when you call them, run
+ * "continually". I'll be calling these subroutines _reactions_. If a regular
+ * subroutine is a point on the time axis, a reaction is a line. It becomes
+ * possible to have reactions in the context of finite compute resources if we
+ * put in a restriction that once a reaction runs, running it again would not
+ * produce side effects for a period of time. With that restriction, even though
+ * we can't actually run a reaction continually, we can make it so that side
+ * effects are _as if_ it was run continually.
  *
  * A _subject_ is a JavaScript object (including a function) that's used to
  * track side effects. The client must _push_ the subject by calling
