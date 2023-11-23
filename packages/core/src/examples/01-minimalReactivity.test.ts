@@ -125,20 +125,17 @@ const updateParents = (
   }
 };
 
-const push: { (subject?: object): void } = (subject?: Subject) => {
+const push: { (subject?: object): void } = (
+  subject: Subject | undefined = currentReaction
+) => {
   if (currentReaction) {
-    if (subject !== undefined) {
-      throw new Error(
-        "A reaction cannot call `push` with an argument: it can only push itself, which is done by calling `push` with no arguments."
-      );
+    if (subject !== currentReaction) {
+      throw new Error("A reaction can only push itself.");
     }
-    subject = currentReaction;
-  } else {
-    if (subject === undefined) {
-      throw new Error(
-        "`push` can be called without arguments only inside a reaction."
-      );
-    }
+  } else if (subject === undefined) {
+    throw new Error(
+      "You must provide an argument when calling `push` outside of a reaction."
+    );
   }
 
   updateParents(subject);
