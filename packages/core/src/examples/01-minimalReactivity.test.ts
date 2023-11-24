@@ -190,19 +190,23 @@ const sweep = (reaction: Reaction) => {
   if (childrenSymbol in currentReaction) {
     currentReaction[unchangedChildrenCountSymbol] = 0;
   }
-  currentReaction[callbackSymbol]();
-  const unchangedChildrenCount = currentReaction[unchangedChildrenCountSymbol];
-  if (unchangedChildrenCount !== undefined) {
-    removeCurrentReactionFromChildren(unchangedChildrenCount);
-    if (unchangedChildrenCount === 0) {
-      delete currentReaction[childrenSymbol];
-    } else {
-      currentReaction[childrenSymbol]!.length = unchangedChildrenCount;
+  try {
+    currentReaction[callbackSymbol]();
+  } finally {
+    const unchangedChildrenCount =
+      currentReaction[unchangedChildrenCountSymbol];
+    if (unchangedChildrenCount !== undefined) {
+      removeCurrentReactionFromChildren(unchangedChildrenCount);
+      if (unchangedChildrenCount === 0) {
+        delete currentReaction[childrenSymbol];
+      } else {
+        currentReaction[childrenSymbol]!.length = unchangedChildrenCount;
+      }
+      delete currentReaction[unchangedChildrenCountSymbol];
     }
-    delete currentReaction[unchangedChildrenCountSymbol];
+    currentReaction[stateSymbol] = cleanSymbol;
+    currentReaction = outerReaction;
   }
-  currentReaction[stateSymbol] = cleanSymbol;
-  currentReaction = outerReaction;
 };
 
 const pull: { (subject: object): void } = (subject: Subject | Reaction) => {
