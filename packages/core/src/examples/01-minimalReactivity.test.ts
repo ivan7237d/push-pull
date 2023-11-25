@@ -125,7 +125,7 @@ const updateParents = (
   }
 };
 
-const push: { (subject?: object): void } = (
+const push: (subject?: object) => void = (
   subject: Subject | undefined = currentReaction
 ) => {
   if (currentReaction) {
@@ -209,7 +209,7 @@ const sweep = (reaction: Reaction) => {
   }
 };
 
-const pull: { (subject: object): void } = (subject: Subject | Reaction) => {
+const pull: (subject: object) => void = (subject: Subject | Reaction) => {
   if (currentReaction) {
     const unchangedChildrenCount =
       currentReaction[unchangedChildrenCountSymbol];
