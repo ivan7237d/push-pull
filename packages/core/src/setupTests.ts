@@ -12,13 +12,16 @@ afterEach(() => {
   resetLog();
 });
 
+const names = new WeakMap<object, string>();
+
 /**
- * When this symbol is added as a key to an object/function (with some name
- * string as value), we will represent this object/function in snapshots with
+ * When an object/function has been named, we will represent it in snapshots with
  * just "[Object <name>]" or "[Function <name>]" unless it's the top-level named
- * non-function object, which is serialized normally.
+ * non-function object, which is serialized as "[Object <name>] { <contents> }".
  */
-export const nameSymbol = Symbol("name");
+export const setName = (object: object, name: string) => {
+  names.set(object, name);
+};
 
 let valueToSkip: unknown;
 
@@ -27,20 +30,23 @@ expect.addSnapshotSerializer({
     value !== valueToSkip &&
     ((typeof value === "object" && value !== null) ||
       typeof value === "function") &&
-    nameSymbol in value,
+    names.has(value),
   serialize: (value, config, indentation, depth, refs, printer) => {
     if (typeof value === "function") {
-      return `[Function ${value[nameSymbol]}]`;
+      return `[Function ${names.get(value)}]`;
     }
     if (valueToSkip === undefined) {
       valueToSkip = value;
       try {
-        return printer(value, config, indentation, depth, refs);
+        return (
+          `[Object ${names.get(value)}] ` +
+          printer(value, config, indentation, depth, refs)
+        );
       } finally {
         valueToSkip = undefined;
       }
     }
-    return `[Object ${value[nameSymbol]}]`;
+    return `[Object ${names.get(value)}]`;
   },
 });
 

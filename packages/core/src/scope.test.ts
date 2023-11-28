@@ -10,7 +10,7 @@ import {
   onDispose,
   runInScope,
 } from "./scope";
-import { log, nameSymbol } from "./setupTests";
+import { log, setName } from "./setupTests";
 
 const contextKey1 = Symbol("contextKey1");
 const contextKey2 = Symbol("contextKey2");
@@ -46,7 +46,7 @@ test("createRootScope", () => {
   const a = createRootScope();
   expect(a).toMatchInlineSnapshot(`{}`);
   const onError = () => {};
-  onError[nameSymbol] = "onError";
+  setName(onError, "onError");
   const b = createRootScope(onError);
   expect(b).toMatchInlineSnapshot(`
     {
@@ -57,54 +57,45 @@ test("createRootScope", () => {
 
 test("createScope: creating linked list", () => {
   const a = createScope();
-  (a as any)[nameSymbol] = "a";
-  expect(a).toMatchInlineSnapshot(`
-    {
-      Symbol(name): "a",
-    }
-  `);
+  setName(a, "a");
+  expect(a).toMatchInlineSnapshot(`[Object a] {}`);
 
   const onError = () => {};
-  onError[nameSymbol] = "onError";
+  setName(onError, "onError");
   const b = runInScope(a, () => createScope(onError))!;
-  (b as any)[nameSymbol] = "b";
+  setName(b, "b");
   expect(a).toMatchInlineSnapshot(`
-    {
-      Symbol(name): "a",
+    [Object a] {
       Symbol(next): [Object b],
     }
   `);
   expect(b).toMatchInlineSnapshot(`
-    {
+    [Object b] {
       Symbol(parent): [Object a],
       Symbol(previous): [Object a],
       Symbol(onError): [Function onError],
-      Symbol(name): "b",
     }
   `);
 
   const c = runInScope(a, createScope)!;
-  (c as any)[nameSymbol] = "c";
+  setName(c, "c");
   expect(a).toMatchInlineSnapshot(`
-    {
-      Symbol(name): "a",
+    [Object a] {
       Symbol(next): [Object c],
     }
   `);
   expect(b).toMatchInlineSnapshot(`
-    {
+    [Object b] {
       Symbol(parent): [Object a],
       Symbol(previous): [Object c],
       Symbol(onError): [Function onError],
-      Symbol(name): "b",
     }
   `);
   expect(c).toMatchInlineSnapshot(`
-    {
+    [Object c] {
       Symbol(parent): [Object a],
       Symbol(previous): [Object a],
       Symbol(next): [Object b],
-      Symbol(name): "c",
     }
   `);
 });
@@ -127,7 +118,7 @@ test("onDispose: updating disposables", () => {
   const a = createScope();
   runInScope(a, () => {
     const disposable = () => {};
-    disposable[nameSymbol] = "a";
+    setName(disposable, "a");
     onDispose(disposable);
   });
   expect(a).toMatchInlineSnapshot(`
@@ -137,7 +128,7 @@ test("onDispose: updating disposables", () => {
   `);
   runInScope(a, () => {
     const disposable = () => {};
-    disposable[nameSymbol] = "b";
+    setName(disposable, "b");
     onDispose(disposable);
   });
   expect(a).toMatchInlineSnapshot(`
@@ -224,7 +215,6 @@ test("disposeScope: scope in which disposables are called", () => {
 
 test("disposeScope: handling errors in disposables", () => {
   const a = createScope();
-  (a as any)[nameSymbol] = "a";
   runInScope(a, () => {
     onDispose(() => {
       throw "error in disposable in a";
@@ -233,7 +223,6 @@ test("disposeScope: handling errors in disposables", () => {
   disposeScope(a);
   expect(a).toMatchInlineSnapshot(`
     {
-      Symbol(name): "a",
       Symbol(disposables): [Function],
       Symbol(disposed): true,
     }
@@ -241,7 +230,6 @@ test("disposeScope: handling errors in disposables", () => {
   expect(processMockMicrotaskQueue).toThrow("error in disposable in a");
 
   const b = createScope();
-  (b as any)[nameSymbol] = "b";
   runInScope(b, () => {
     onDispose(log.add(label("first disposable in b")));
   });
@@ -273,9 +261,7 @@ test("disposeScope: no re-dispose", () => {
 
 test("disposeScope: no disposing from callback", () => {
   const a = createScope();
-  (a as any)[nameSymbol] = "a";
   const b = runInScope(a, createScope)!;
-  (b as any)[nameSymbol] = "b";
   runInScope(b, () => {
     expect(() => {
       disposeScope(a);
@@ -301,43 +287,40 @@ test("disposeScope: disposing single scope", () => {
 
 test("disposeScope: disposing last scope", () => {
   const a = createScope();
-  (a as any)[nameSymbol] = "a";
+  setName(a, "a");
   runInScope(a, () => {
     onDispose(log.add(label("disposable in a")));
   });
   const b = runInScope(a, createScope)!;
-  (b as any)[nameSymbol] = "b";
+  setName(b, "b");
   runInScope(b, () => {
     onDispose(log.add(label("disposable in b")));
   });
   const c = runInScope(a, createScope)!;
-  (c as any)[nameSymbol] = "c";
+  setName(c, "c");
   runInScope(c, () => {
     onDispose(log.add(label("disposable in c")));
   });
 
   disposeScope(c);
   expect(a).toMatchInlineSnapshot(`
-    {
-      Symbol(name): "a",
+    [Object a] {
       Symbol(disposables): [Function],
       Symbol(next): [Object b],
     }
   `);
   expect(b).toMatchInlineSnapshot(`
-    {
+    [Object b] {
       Symbol(parent): [Object a],
       Symbol(previous): [Object a],
-      Symbol(name): "b",
       Symbol(disposables): [Function],
     }
   `);
   expect(c).toMatchInlineSnapshot(`
-    {
+    [Object c] {
       Symbol(parent): [Object a],
       Symbol(previous): [Object a],
       Symbol(next): [Object b],
-      Symbol(name): "c",
       Symbol(disposables): [Function],
       Symbol(disposed): true,
     }
@@ -347,43 +330,40 @@ test("disposeScope: disposing last scope", () => {
 
 test("disposeScope: disposing middle scope", () => {
   const a = createScope();
-  (a as any)[nameSymbol] = "a";
+  setName(a, "a");
   runInScope(a, () => {
     onDispose(log.add(label("disposable in a")));
   });
   const b = runInScope(a, createScope)!;
-  (b as any)[nameSymbol] = "b";
+  setName(b, "b");
   runInScope(b, () => {
     onDispose(log.add(label("disposable in b")));
   });
   const c = runInScope(a, createScope)!;
-  (c as any)[nameSymbol] = "c";
+  setName(c, "c");
   runInScope(c, () => {
     onDispose(log.add(label("disposable in c")));
   });
 
   disposeScope(b);
   expect(a).toMatchInlineSnapshot(`
-    {
-      Symbol(name): "a",
+    [Object a] {
       Symbol(disposables): [Function],
       Symbol(next): [Object c],
     }
   `);
   expect(b).toMatchInlineSnapshot(`
-    {
+    [Object b] {
       Symbol(parent): [Object a],
       Symbol(previous): [Object c],
-      Symbol(name): "b",
       Symbol(disposables): [Function],
       Symbol(disposed): true,
     }
   `);
   expect(c).toMatchInlineSnapshot(`
-    {
+    [Object c] {
       Symbol(parent): [Object a],
       Symbol(previous): [Object a],
-      Symbol(name): "c",
       Symbol(disposables): [Function],
     }
   `);
@@ -392,45 +372,42 @@ test("disposeScope: disposing middle scope", () => {
 
 test("disposeScope: disposing first scope", () => {
   const a = createScope();
-  (a as any)[nameSymbol] = "a";
+  setName(a, "a");
   runInScope(a, () => {
     onDispose(log.add(label("disposable in a")));
   });
   const b = runInScope(a, createScope)!;
-  (b as any)[nameSymbol] = "b";
+  setName(b, "b");
   runInScope(b, () => {
     onDispose(log.add(label("disposable in b")));
   });
   const c = runInScope(a, createScope)!;
-  (c as any)[nameSymbol] = "c";
+  setName(c, "c");
   runInScope(c, () => {
     onDispose(log.add(label("disposable in c")));
   });
 
   disposeScope(a);
   expect(a).toMatchInlineSnapshot(`
-    {
-      Symbol(name): "a",
+    [Object a] {
       Symbol(disposables): [Function],
       Symbol(next): [Object c],
       Symbol(disposed): true,
     }
   `);
   expect(b).toMatchInlineSnapshot(`
-    {
+    [Object b] {
       Symbol(parent): [Object a],
       Symbol(previous): [Object c],
-      Symbol(name): "b",
       Symbol(disposables): [Function],
       Symbol(disposed): true,
     }
   `);
   expect(c).toMatchInlineSnapshot(`
-    {
+    [Object c] {
       Symbol(parent): [Object a],
       Symbol(previous): [Object a],
       Symbol(next): [Object b],
-      Symbol(name): "c",
       Symbol(disposables): [Function],
       Symbol(disposed): true,
     }
@@ -444,17 +421,17 @@ test("disposeScope: disposing first scope", () => {
 
 test("disposeScope: re-entry", () => {
   const a = createScope();
-  (a as any)[nameSymbol] = "a";
+  setName(a, "a");
   runInScope(a, () => {
     onDispose(log.add(label("disposable in a")));
   });
   const b = runInScope(a, createScope)!;
-  (b as any)[nameSymbol] = "b";
+  setName(b, "b");
   runInScope(b, () => {
     onDispose(log.add(label("disposable in b")));
   });
   const c = runInScope(a, createScope)!;
-  (c as any)[nameSymbol] = "c";
+  setName(c, "c");
   runInScope(c, () => {
     onDispose(() => {
       log.add(label("disposable in c"))();
