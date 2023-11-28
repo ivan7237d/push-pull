@@ -6,7 +6,9 @@ export const log = noopLog.add(jestPlugin());
 export const logFunction = getLogFunction(log);
 
 afterEach(() => {
-  expect(readLog()).toMatchInlineSnapshot(`[Empty log]`);
+  if (readLog().length) {
+    throw "Log expected to be empty at the end of each test.";
+  }
   resetLog();
 });
 
