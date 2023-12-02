@@ -1,65 +1,27 @@
 /**
  * This module implements the simplest version of reactivity that I can think
- * of.
+ * of. Down below there are also signal and memo implemented on top, and then
+ * unit tests.
  *
- * On the level of intuition, I think of reactive programming as having to do
- * with subroutines that instead of running when you call them, run
- * "continually". I'll be calling these subroutines _reactions_. If a regular
- * subroutine is a point on the time axis, a reaction is a line. It becomes
- * possible to have reactions in the context of finite compute resources if we
- * put in a restriction that once a reaction runs, running it again would not
- * produce side effects for a period of time. With that restriction, even though
- * we can't actually run a reaction continually, we can make it so that side
- * effects are _as if_ it was run continually.
+ * A _subject_ is a JavaScript object (possibly a function) with which we
+ * associate an imaginary comparator function that takes two states of the
+ * program and returns a boolean. We say that two states are _equal in terms of
+ * a given subject_ if for these two states the comparator returns true.
  *
- * A _subject_ is a JavaScript object (including a function) that's used to
- * track side effects. The client must _push_ the subject by calling
- * `push(subject)` after side effects occur.
+ * A subject cannot be pulled if it was pulled previously and the current state
+ * is not equal in terms of this subject to the state that existed the last time
+ * the subject was pulled or pushed.
  *
- * A _reaction_ is a subject that represents side effects of some `() => void`
- * function (the _reaction callback_) that does not depend .
+ * Equivalently, if a subject was pulled and has not been pushed since, it can
+ * only be pulled if the state is equal in terms of this subject to the state at
+ * the time of the last pull.
  *
- * We say that a reaction is _clean_ if the reaction callback would not produce
- * any side effects.
+ * Equivalently, when there are two pulls of a subject with no push in between,
+ * the state must be the same in terms of that subject at the time of the two
+ * pulls.
  *
- * `pull(subject)` ensures that the side effects associated with `subject` are
- * as if all the reactions were clean.
- *
- *
- *
- * The way I'm looking at it here, reactive programming is all about the concept
- * of a subroutine that produces some side effects if you run it once, but then
- * until something happens, it will not produce side effects if you run it
- * again. I'm going to call this type of subroutine a _reaction_. My intuition
- * here is that whereas a regular subroutine has to be invoked imperatively by
- * another subroutine, all the way up to the entry point, a reaction decides
- * itself when it needs to run - specifically, it runs whenever something
- * happens that could cause it to have side effects.
- *
- * `push` and `pull` are two functions that take a _subject_, which can be any
- * object including a function.
- *
- * We define a _reaction_ as a `() => void` function that would not produce side
- * effects if it has been run previously and no subject pulled in the last run
- * has been pushed since the end of that run.
- *
- * With this definition of a reaction, it becomes clear what `push`, `pull` and
- * a subject represent: a subject is a set of side effects, `push` notifies that
- * a side effect inside a specific subject has ocurred, and `pull` is a way to
- * indicate that some set of side effects has a bearing on what the reaction
- * that `pull`s would do.
- *
- *
- *
- * "I want the side effects of a specific ("observed") reaction to be such as if
- * all the reactions were clean"
- *
- * This module gives you a function called `sweep` that takes a reaction and
- * whose job is to give you a guarantee that if you run the reaction immediately
- * afterwards, it would not produce side effects.
- *
- * Down below there are also examples of constructs you can build on top of
- * push/pull/sweep, and then unit tests.
+ * `pull` of a subject guarantees that running any of the reactions would not
+ * change the state in terms of that subject.
  */
 
 import { label } from "@1log/core";
