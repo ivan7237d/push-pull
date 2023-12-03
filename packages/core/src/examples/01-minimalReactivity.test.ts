@@ -20,6 +20,9 @@
  * the state must be the same in terms of that subject at the time of the two
  * pulls.
  *
+ * If you re-run a reaction, it can only produce side effects if state has
+ * changed in terms of a subject that was pulled during that run.
+ *
  * `pull` of a subject guarantees that running any of the reactions would not
  * change the state in terms of that subject.
  */
