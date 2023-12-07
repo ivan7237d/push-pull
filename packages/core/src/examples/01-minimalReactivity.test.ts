@@ -35,13 +35,18 @@ import { log } from "../setupTests";
 // Reactivity
 //
 
+// Prop of a subject.
 const parentsSymbol = Symbol("parents");
+
+// Props of a reaction.
 const callbackSymbol = Symbol("callback");
 const childrenSymbol = Symbol("children");
 const stateSymbol = Symbol("state");
+const unchangedChildrenCountSymbol = Symbol("unchangedChildrenCount");
+
+// Possible values of `[stateSymbol]`.
 const conditionallyCleanSymbol = Symbol("conditionallyClean");
 const cleanSymbol = Symbol("clean");
-const unchangedChildrenCountSymbol = Symbol("unchangedChildrenCount");
 
 interface Subject {
   // eslint-disable-next-line no-use-before-define
@@ -55,18 +60,15 @@ interface Reaction extends Subject {
   [unchangedChildrenCountSymbol]?: number;
 }
 
-/**
- * Internal.
- */
 let currentReaction: Reaction | undefined;
 
-const createReaction = (callback: () => void): Reaction => ({
+/**
+ * IRL would be an export.
+ */
+const createReaction = (callback: () => void): {} => ({
   [callbackSymbol]: callback,
 });
 
-/**
- * Internal.
- */
 const updateParents = (
   subject: Subject,
   state?: typeof conditionallyCleanSymbol
@@ -90,6 +92,9 @@ const updateParents = (
   }
 };
 
+/**
+ * IRL would be an export.
+ */
 const push: (subject?: object) => void = (
   subject: Subject | undefined = currentReaction
 ) => {
@@ -106,9 +111,6 @@ const push: (subject?: object) => void = (
   updateParents(subject);
 };
 
-/**
- * Internal.
- */
 const removeCurrentReactionFromChildren = (startingIndex: number) => {
   const children = currentReaction![childrenSymbol]!;
   for (let i = startingIndex; i < children.length; i++) {
@@ -124,9 +126,6 @@ const removeCurrentReactionFromChildren = (startingIndex: number) => {
   }
 };
 
-/**
- * Internal.
- */
 const sweep = (reaction: Reaction) => {
   if (reaction[stateSymbol] === conditionallyCleanSymbol) {
     // In this case we don't know if the reaction needs to be run, but by
@@ -174,6 +173,9 @@ const sweep = (reaction: Reaction) => {
   }
 };
 
+/**
+ * IRL would be an export.
+ */
 const pull: (subject: object) => void = (subject: Subject | Reaction) => {
   if (currentReaction) {
     const unchangedChildrenCount =
@@ -209,6 +211,9 @@ const pull: (subject: object) => void = (subject: Subject | Reaction) => {
 // Abstractions on top of reactivity
 //
 
+/**
+ * IRL would be an export.
+ */
 const createSignal = <Value>(
   value: Value
 ): readonly [get: () => Value, set: (newValue: Value) => void] => {
@@ -227,11 +232,11 @@ const createSignal = <Value>(
   ];
 };
 
-/**
- * Internal.
- */
 const voidSymbol = Symbol("void");
 
+/**
+ * IRL would be an export.
+ */
 const createMemo = <Value>(get: () => Value): (() => Value) => {
   let value: Value | typeof voidSymbol = voidSymbol;
   const reaction = createReaction(() => {
