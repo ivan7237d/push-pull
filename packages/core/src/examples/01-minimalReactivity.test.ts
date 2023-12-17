@@ -216,7 +216,7 @@ const pull: (subject: object) => void = (subject: Subject | Reaction) => {
  */
 const createSignal = <Value>(
   value: Value
-): readonly [get: () => Value, set: (newValue: Value) => void] => {
+): readonly [get: () => Value, set: (value: Value) => void] => {
   const get = () => {
     pull(get);
     return value;
