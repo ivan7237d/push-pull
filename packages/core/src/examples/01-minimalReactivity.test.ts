@@ -252,9 +252,42 @@ const createMemo = <Value>(get: () => Value): (() => Value) => {
   };
 };
 
+/**
+ * IRL would be an export.
+ */
+const createLazyPromise = <Value>(
+  produce: (resolve: (value: Value) => void) => void
+) => {
+  let value: Value | typeof voidSymbol = voidSymbol;
+  const reaction = createReaction(() => {
+    produce((newValue) => {
+      if (value !== voidSymbol) {
+        throw "You cannot resolve a lazy promise that has already resolved.";
+      }
+      value = newValue;
+      push(reaction);
+    });
+  });
+  return (resolve: (value: Value) => void) => {
+    if (value === voidSymbol) {
+      pull(reaction);
+    } else {
+      resolve(value);
+    }
+  };
+};
+
 //
 // Tests
 //
+
+beforeAll(() => {
+  jest.useFakeTimers();
+});
+
+afterAll(() => {
+  jest.useRealTimers();
+});
 
 test("reaction", () => {
   const subject = {};
@@ -311,6 +344,23 @@ test("memo", () => {
   setX(6);
   pull(reaction);
   expect(readLog()).toMatchInlineSnapshot(`> [memo] 10`);
+});
+
+test("lazy promise", () => {
+  const promise = createLazyPromise<string>((resolve) => {
+    setTimeout(() => {
+      resolve("value");
+    }, 1000);
+  });
+  const reaction = createReaction(() => {
+    promise(log.add(label("resolve")));
+  });
+  log("start");
+  pull(reaction);
+  expect(readLog()).toMatchInlineSnapshot(`> "start"`);
+  jest.runAllTimers();
+  pull(reaction);
+  expect(readLog()).toMatchInlineSnapshot(`> [resolve] +1s "value"`);
 });
 
 test("for an asymmetrical diamond graph there are no glitches or redundant reaction calls", () => {
