@@ -353,14 +353,17 @@ test("lazy promise", () => {
     }, 1000);
   });
   const reaction = createReaction(() => {
+    log("reaction");
     promise(log.add(label("resolve")));
   });
-  log("start");
   pull(reaction);
-  expect(readLog()).toMatchInlineSnapshot(`> "start"`);
+  expect(readLog()).toMatchInlineSnapshot(`> "reaction"`);
   jest.runAllTimers();
   pull(reaction);
-  expect(readLog()).toMatchInlineSnapshot(`> [resolve] +1s "value"`);
+  expect(readLog()).toMatchInlineSnapshot(`
+    > +1s "reaction"
+    > [resolve] "value"
+  `);
 });
 
 test("for an asymmetrical diamond graph there are no glitches or redundant reaction calls", () => {
