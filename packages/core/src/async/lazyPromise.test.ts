@@ -1,7 +1,9 @@
 import { label } from "@1log/core";
 import { readLog } from "@1log/jest";
+import { createEffect, pull } from "../reactivity";
 import { createScope, disposeScope, onDispose, runInScope } from "../scope";
 import { log } from "../setupTests";
+import { createSignal } from "../signal";
 import { createLazyPromise, isLazyPromise, never } from "./lazyPromise";
 
 beforeAll(() => {
@@ -182,4 +184,60 @@ test("isLazyPromise", () => {
   expect(isLazyPromise(createLazyPromise(() => {}))).toMatchInlineSnapshot(
     `true`
   );
+});
+
+test("signal of a synchronously resolved promise", () => {
+  const [a, setA] = createSignal(
+    createLazyPromise<number>((resolve) => {
+      resolve(0);
+    })
+  );
+
+  runInScope(createScope(), () => {
+    createEffect(() => {
+      a()(log.add(label("resolve")));
+    });
+  });
+  expect(readLog()).toMatchInlineSnapshot(`> [resolve] 0`);
+  setA(
+    createLazyPromise<number>((resolve) => {
+      resolve(1);
+    })
+  );
+  expect(readLog()).toMatchInlineSnapshot(`> [resolve] 1`);
+});
+
+test("signal of a synchronously resolved promise + memo", () => {
+  const [a, setA] = createSignal(
+    createLazyPromise<number>((resolve) => {
+      resolve(0);
+    })
+  );
+
+  const createMemo =
+    <Value>(get: () => Value): (() => Value) =>
+    () =>
+      pull(get);
+
+  const b = createMemo(() => {
+    const promise = a();
+    return createLazyPromise<number>((resolve) => {
+      promise((value) => {
+        resolve(value);
+      });
+    });
+  });
+
+  runInScope(createScope(), () => {
+    createEffect(() => {
+      b()(log.add(label("resolve")));
+    });
+  });
+  expect(readLog()).toMatchInlineSnapshot(`> [resolve] 0`);
+  setA(
+    createLazyPromise<number>((resolve) => {
+      resolve(1);
+    })
+  );
+  expect(readLog()).toMatchInlineSnapshot(`> [resolve] 1`);
 });

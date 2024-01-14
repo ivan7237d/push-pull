@@ -391,3 +391,41 @@ test("for an asymmetrical diamond graph there are no glitches or redundant react
   pull(e);
   expect(readLog()).toMatchInlineSnapshot(`> 2`);
 });
+
+// test("an asymmetrical diamond graph with synchronously resolved promises", () => {
+//   const [a, setA] = createSignal(0);
+//   const b = createMemo(() =>
+//     createLazyPromise<number>((resolve) => {
+//       resolve(a());
+//     })
+//   );
+//   const c = createMemo(() =>
+//     createLazyPromise<number>((resolve) => {
+//       resolve(a());
+//     })
+//   );
+//   const d = createMemo(() =>
+//     createLazyPromise<number>((resolve) => {
+//       c()((value) => {
+//         resolve(value);
+//       });
+//     })
+//   );
+//   const e = createReaction(() => {
+//     let left: number | undefined, right: number | undefined;
+//     b()((value) => {
+//       left = value;
+//     });
+//     d()((value) => {
+//       right = value;
+//     });
+//     if (left !== undefined && right !== undefined) {
+//       log(left + right);
+//     }
+//   });
+//   pull(e);
+//   expect(readLog()).toMatchInlineSnapshot();
+//   setA(1);
+//   pull(e);
+//   expect(readLog()).toMatchInlineSnapshot();
+// });
