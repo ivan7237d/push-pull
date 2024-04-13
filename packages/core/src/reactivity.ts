@@ -1,6 +1,5 @@
 import {
   Scope,
-  createRootScope,
   createScope,
   disposeScope,
   getContext,
@@ -232,6 +231,8 @@ const onLazyReactionError = (error: unknown, scope: Scope) => {
   push(reaction);
 };
 
+const createReactionScope = () => createScope(onLazyReactionError);
+
 const runReaction = (reaction: LazyReaction | Effect) => {
   const outerReaction = currentReaction;
   const outerNewChildren = newChildren;
@@ -252,7 +253,7 @@ const runReaction = (reaction: LazyReaction | Effect) => {
         return;
       }
     } else {
-      reaction[scopeSymbol] = createRootScope(onLazyReactionError);
+      reaction[scopeSymbol] = runInScope(undefined, createReactionScope);
       reaction[scopeSymbol][reactionSymbol] = reaction;
       const returnValue = runInScope(reaction[scopeSymbol], reaction);
       if (errorSymbol in reaction) {

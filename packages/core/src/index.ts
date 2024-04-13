@@ -5,7 +5,6 @@ export { createLazyPromise, isLazyPromise, never } from "./async/lazyPromise";
 export type { LazyPromise } from "./async/lazyPromise";
 export { batch, createEffect, pull, push } from "./reactivity";
 export {
-  createRootScope,
   createScope,
   disposeScope,
   getContext,

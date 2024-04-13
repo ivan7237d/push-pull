@@ -1,7 +1,6 @@
 import { label } from "@1log/core";
 import { readLog } from "@1log/jest";
 import {
-  createRootScope,
   createScope,
   disposeScope,
   getContext,
@@ -40,20 +39,6 @@ declare module "./scope" {
     [contextKey2]?: number | undefined;
   }
 }
-
-test("createRootScope", () => {
-  // $ExpectType Scope
-  const a = createRootScope();
-  expect(a).toMatchInlineSnapshot(`{}`);
-  const onError = () => {};
-  setName(onError, "onError");
-  const b = createRootScope(onError);
-  expect(b).toMatchInlineSnapshot(`
-    {
-      Symbol(onError): [Function onError],
-    }
-  `);
-});
 
 test("createScope: creating linked list", () => {
   const a = createScope();
@@ -447,6 +432,33 @@ test("disposeScope: re-entry", () => {
     > [disposable in b]
     > [disposable in a]
   `);
+});
+
+test("runInScope: run in root scope", () => {
+  const a = createScope();
+  setName(a, "a");
+  expect(
+    runInScope(a, () => {
+      const b = createScope();
+      expect(b).toMatchInlineSnapshot(`
+        {
+          Symbol(parent): [Object a] {
+            Symbol(running): true,
+            Symbol(next): [Circular],
+          },
+          Symbol(previous): [Object a] {
+            Symbol(running): true,
+            Symbol(next): [Circular],
+          },
+        }
+      `);
+      return runInScope(undefined, () => {
+        const c = createScope();
+        expect(c).toMatchInlineSnapshot(`{}`);
+        return 1;
+      });
+    })
+  ).toMatchInlineSnapshot(`1`);
 });
 
 test("runInScope: error if scope is disposed", () => {

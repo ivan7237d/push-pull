@@ -20,16 +20,6 @@ export interface Scope {
 
 let currentScope: Scope | undefined;
 
-export const createRootScope = (
-  onError?: (error: unknown, scope: Scope) => void
-): Scope => {
-  const newScope: Scope = {};
-  if (onError) {
-    newScope[onErrorSymbol] = onError;
-  }
-  return newScope;
-};
-
 export const createScope = (
   onError?: (error: unknown, scope: Scope) => void
 ): Scope => {
@@ -164,7 +154,19 @@ export const disposeScope = (scope: Scope): void => {
  * microtask. If there are multiple errors, they are combined together into an
  * AggregateError.
  */
-export const runInScope = <T>(scope: Scope, callback: () => T): T | void => {
+export const runInScope: {
+  <T>(scope: Scope, callback: () => T): T | void;
+  <T>(scope: undefined, callback: () => T): T;
+} = <T>(scope: Scope | undefined, callback: () => T): T | void => {
+  const outerScope = currentScope;
+  if (!scope) {
+    try {
+      currentScope = scope;
+      return callback();
+    } finally {
+      currentScope = outerScope;
+    }
+  }
   if (disposedSymbol in scope) {
     throw new Error("You cannot run a callback in a disposed scope.");
   }
@@ -181,10 +183,9 @@ export const runInScope = <T>(scope: Scope, callback: () => T): T | void => {
     nearestRunningAncestor &&
     !(runningSymbol in nearestRunningAncestor)
   );
-  const outerScope = currentScope;
-  currentScope = scope;
   try {
     try {
+      currentScope = scope;
       return callback();
     } finally {
       currentScope = outerScope;

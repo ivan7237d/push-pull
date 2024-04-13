@@ -5,13 +5,7 @@
 import { label } from "@1log/core";
 import { readLog } from "@1log/jest";
 import { batch, createEffect, pull, push } from "./reactivity";
-import {
-  Scope,
-  createRootScope,
-  createScope,
-  onDispose,
-  runInScope,
-} from "./scope";
+import { Scope, createScope, onDispose, runInScope } from "./scope";
 import { log, logFunction } from "./setupTests";
 import { createSignal } from "./signal";
 
@@ -30,7 +24,7 @@ test("running callbacks in reaction scope asynchronously", () => {
   });
   runInScope(childScope!, () => {
     pull(subjectA);
-    runInScope(createRootScope(), () => {
+    runInScope(undefined, () => {
       pull(subjectB);
     });
   });
